@@ -1,0 +1,46 @@
+<div class="space-y-3">
+  <div>
+    <h3 class="text-base font-semibold">Link to Bambu Profile</h3>
+    <p class="text-xs text-slate-400">Pick a profile from OrcaSlicer and store mapping in Spoolman extra fields.</p>
+  </div>
+
+  <form
+    class="flex gap-2"
+    hx-get="/web/profiles"
+    hx-target="#profile-picker"
+    hx-trigger="input changed delay:250ms from:#profile-search, submit"
+  >
+    <input type="hidden" name="filament_id" value="{{ filament_id }}" />
+    <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
+    <input
+      id="profile-search"
+      name="search"
+      type="search"
+      value="{{ profile_search }}"
+      placeholder="Search profile name or type"
+      class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+    />
+  </form>
+
+  {% if profiles %}
+    <form
+      class="space-y-2"
+      hx-post="/web/link/{{ filament_id }}"
+      hx-target="#filament-detail"
+    >
+      <input type="hidden" name="profile_search" value="{{ profile_search }}" />
+      <select name="setting_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
+        {% for profile in profiles %}
+          <option value="{{ profile.setting_id }}" {% if profile.setting_id == selected_setting_id %}selected{% endif %}>
+            {{ profile.name }} | {{ profile.filament_type }} | {{ profile.setting_id }}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30" type="submit">
+        Link Filament
+      </button>
+    </form>
+  {% else %}
+    <div class="rounded-md border border-dashed border-slate-700 p-3 text-sm text-slate-400">No profiles match this search.</div>
+  {% endif %}
+</div>

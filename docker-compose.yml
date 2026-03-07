@@ -1,0 +1,20 @@
+services:
+  bambu-spool-helper:
+    build: .
+    container_name: bambu-spool-helper
+    ports:
+      - "9817:9817"
+    environment:
+      ORCASLICER_URL: ${ORCASLICER_URL:-http://orcaslicer:8000}
+      SPOOLMAN_URL: ${SPOOLMAN_URL:-http://spoolman:7912}
+      PRINTER_IP: ${PRINTER_IP:-}
+      PRINTER_ACCESS_CODE: ${PRINTER_ACCESS_CODE:-}
+      PRINTER_SERIAL: ${PRINTER_SERIAL:-}
+      DEFAULT_MACHINE_SETTING_ID: ${DEFAULT_MACHINE_SETTING_ID:-GM020}
+      PORT: ${PORT:-9817}
+    networks:
+      - spoolnet
+
+networks:
+  spoolnet:
+    external: true

@@ -1,0 +1,49 @@
+{% if error %}
+  <div class="mb-3 rounded-md border border-rose-700/60 bg-rose-900/30 p-2 text-xs text-rose-100">{{ error }}</div>
+{% endif %}
+
+<div class="space-y-4">
+  <div class="rounded-lg border border-slate-700 bg-slate-900/60 p-4">
+    <div class="flex items-start justify-between gap-3">
+      <div>
+        <h2 class="text-lg font-semibold">{{ filament.display_name }}</h2>
+        <p class="text-sm text-slate-400">Filament #{{ filament.id }}{% if filament.material %} - {{ filament.material }}{% endif %}</p>
+      </div>
+      <span class="inline-block h-6 w-6 rounded-full border border-black/30" style="background: {{ filament.color_css }}"></span>
+    </div>
+
+    <div class="mt-4 grid gap-2 text-sm md:grid-cols-2">
+      <div class="rounded-md border border-slate-700 p-2">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Bambu Setting ID</div>
+        <div class="font-mono text-slate-200">{{ filament.bambu_setting_id or "-" }}</div>
+      </div>
+      <div class="rounded-md border border-slate-700 p-2">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Bambu Filament ID</div>
+        <div class="font-mono text-slate-200">{{ filament.bambu_filament_id or "-" }}</div>
+      </div>
+    </div>
+
+    {% if linked_profile %}
+      <div class="mt-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm">
+        <div class="font-medium text-emerald-200">Linked Profile</div>
+        <div class="mt-1 text-emerald-100">{{ linked_profile.name }}</div>
+        <div class="mt-1 text-xs text-emerald-200/80">{{ linked_profile.filament_type }} | {{ linked_profile.setting_id }} | {{ linked_profile.filament_id }}</div>
+      </div>
+    {% endif %}
+
+    {% if filament.is_linked %}
+      <button
+        class="mt-4 rounded-md border border-rose-700 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-900/30"
+        hx-post="/web/unlink/{{ filament.id }}"
+        hx-target="#filament-detail"
+      >
+        Unlink
+      </button>
+    {% endif %}
+  </div>
+
+  <div id="profile-picker" class="rounded-lg border border-slate-700 bg-slate-900/60 p-4">
+    {% set filament_id = filament.id %}
+    {% include "partials/profile_picker.html" %}
+  </div>
+</div>

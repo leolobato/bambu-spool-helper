@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en" class="h-full dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bambu-spool-helper</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              ink: "#e2e8f0",
+              panel: "#0f172a"
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  </head>
+  <body class="h-full bg-slate-950 text-ink">
+    <div class="mx-auto flex h-full max-w-7xl flex-col px-4 py-4 md:px-6">
+      <header class="mb-4 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3">
+        <div>
+          <h1 class="text-lg font-semibold tracking-tight">bambu-spool-helper</h1>
+          <p class="text-xs text-slate-400">Spoolman linking for Bambu filament profiles</p>
+        </div>
+        <div class="flex items-center gap-2">
+          <button
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            hx-post="/reload"
+            hx-swap="none"
+          >
+            Reload Profiles
+          </button>
+          <a class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800" href="/docs">API Docs</a>
+        </div>
+      </header>
+
+      <main class="min-h-0 flex-1">{% block content %}{% endblock %}</main>
+    </div>
+  </body>
+</html>
