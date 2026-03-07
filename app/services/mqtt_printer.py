@@ -136,8 +136,7 @@ class MQTTPrinterClient:
         return "FFFFFFFF"
 
     def _on_connect(self, client, userdata, flags, reason_code, properties=None) -> None:
-        code = int(reason_code)
-        self._connected = code == 0
+        self._connected = reason_code == 0
         if self._connected:
             logger.info("Connected to printer MQTT broker")
         else:

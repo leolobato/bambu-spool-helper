@@ -93,9 +93,9 @@ class SpoolmanFilament(BaseModel):
             decoded = json.loads(raw)
             if isinstance(decoded, str) and decoded:
                 return decoded
+            return None
         except json.JSONDecodeError:
-            pass
-        return raw or None
+            return raw or None
 
     @property
     def bambu_filament_id(self) -> str | None:
