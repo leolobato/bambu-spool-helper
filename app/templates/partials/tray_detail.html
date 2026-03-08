@@ -14,6 +14,12 @@
     />
   </form>
 
+  {% if no_match_message is defined and no_match_message %}
+    <div class="rounded-md border border-amber-700/60 bg-amber-900/20 p-2 text-xs text-amber-100">
+      {{ no_match_message }}
+    </div>
+  {% endif %}
+
   {% if spools %}
     <form
       hx-post="/web/tray/{{ tray.tray_index }}/assign"
@@ -23,7 +29,7 @@
     >
       <select name="spool_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
         {% for spool in spools %}
-          <option value="{{ spool.id }}">
+          <option value="{{ spool.id }}" {% if selected_spool_id is defined and selected_spool_id == spool.id %}selected{% endif %}>
             {{ spool.display_name }}{% if spool.filament.material %} ({{ spool.filament.material }}){% endif %}{% if spool.remaining_weight is not none %} - {{ spool.remaining_weight|round|int }}g{% endif %}
           </option>
         {% endfor %}
