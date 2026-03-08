@@ -63,21 +63,55 @@ class OrcaSlicerClient:
         return [profile.model_copy() for profile in self._profiles]
 
     def find_profile(self, setting_id: str, filament_id: str) -> FilamentProfileResponse | None:
+        setting_id = self._normalize_id(setting_id)
+        filament_id = self._normalize_id(filament_id)
+
         exact = next(
             (
                 profile
                 for profile in self._profiles
-                if profile.setting_id == setting_id and profile.filament_id == filament_id
+                if self._ids_match(profile.setting_id, setting_id)
+                and self._ids_match(profile.filament_id, filament_id)
             ),
             None,
         )
         if exact:
             return exact.model_copy()
 
-        fallback = next((profile for profile in self._profiles if profile.filament_id == filament_id), None)
+        setting_fallback = next(
+            (profile for profile in self._profiles if self._ids_match(profile.setting_id, setting_id)),
+            None,
+        )
+        if setting_fallback:
+            return setting_fallback.model_copy()
+
+        fallback = next(
+            (profile for profile in self._profiles if self._ids_match(profile.filament_id, filament_id)),
+            None,
+        )
         if fallback:
             return fallback.model_copy()
         return None
+
+    @staticmethod
+    def _normalize_id(value: str) -> str:
+        return str(value or "").strip().upper()
+
+    @staticmethod
+    def _ids_match(left: str, right: str) -> bool:
+        left_norm = OrcaSlicerClient._normalize_id(left)
+        right_norm = OrcaSlicerClient._normalize_id(right)
+        if not left_norm or not right_norm:
+            return False
+        if left_norm == right_norm:
+            return True
+        # Orca profiles may expose IDs prefixed with "O" (e.g. OGFA00) while
+        # Spoolman links may keep non-prefixed IDs (e.g. GFA00).
+        if left_norm.startswith("O") and left_norm[1:] == right_norm:
+            return True
+        if right_norm.startswith("O") and right_norm[1:] == left_norm:
+            return True
+        return False
 
     @staticmethod
     def _build_profile(summary: dict[str, Any], detail: dict[str, Any]) -> FilamentProfileResponse:
