@@ -28,6 +28,8 @@
           <p class="text-xs text-slate-400">Spoolman linking for Bambu filament profiles</p>
         </div>
         <div class="flex items-center gap-2">
+          <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'filaments' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/">Filaments</a>
+          <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'trays' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/trays">AMS Trays</a>
           <button
             class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
             hx-post="/reload"
@@ -35,7 +37,6 @@
           >
             Reload Profiles
           </button>
-          <a class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800" href="/docs">API Docs</a>
         </div>
       </header>
 

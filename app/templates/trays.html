@@ -1,0 +1,12 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div
+  id="trays-content"
+  hx-get="/web/trays/content"
+  hx-trigger="every 8s"
+  hx-swap="innerHTML"
+>
+  {% include "partials/trays_content.html" %}
+</div>
+{% endblock %}

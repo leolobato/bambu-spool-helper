@@ -10,7 +10,7 @@ from fastapi import APIRouter, Form, HTTPException, Query, Request
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.models import FilamentProfileResponse, SpoolmanFilament
+from app.models import FilamentProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
 
 logger = logging.getLogger(__name__)
 
@@ -136,6 +136,7 @@ async def index(request: Request) -> HTMLResponse:
             "profile_search": "",
             "selected_setting_id": selected_filament.bambu_setting_id if selected_filament else "",
             "linked_profile": linked_profile,
+            "active_page": "filaments",
         },
     )
 
@@ -206,6 +207,202 @@ async def unlink_filament(request: Request, filament_id: int) -> HTMLResponse:
         raise HTTPException(status_code=502, detail=f"Failed to unlink filament: {exc}") from exc
 
     return await _render_filament_detail(request, filament_id)
+
+
+def _build_tray_statuses(request: Request) -> list[TrayStatus]:
+    mqtt = request.app.state.mqtt
+    tray_data = mqtt.get_tray_data()
+    statuses = []
+    for i in range(5):  # 0-3 AMS, 4 external
+        td = tray_data.get(i)
+        if td:
+            statuses.append(TrayStatus(
+                tray_index=i,
+                tray_type=td.tray_type,
+                tray_color=td.tray_color,
+                tray_info_idx=td.tray_info_idx,
+                nozzle_temp_min=td.nozzle_temp_min,
+                nozzle_temp_max=td.nozzle_temp_max,
+            ))
+        else:
+            statuses.append(TrayStatus(tray_index=i))
+    return statuses
+
+
+async def _load_spools(request: Request) -> tuple[list[SpoolmanSpool], str | None]:
+    spoolman = request.app.state.spoolman
+    try:
+        spools = await spoolman.get_spools()
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to fetch spools from Spoolman: %s", exc)
+        return [], f"Spoolman request failed: {exc}"
+    return spools, None
+
+
+def _build_mqtt_status(request: Request) -> dict[str, str | int | bool | None]:
+    status = request.app.state.mqtt.get_connection_status()
+    configured = bool(status["configured"])
+    connected = bool(status["connected"])
+    tray_count = int(status["tray_count"])
+    last_error = status.get("last_error")
+    last_message_at = status.get("last_message_at")
+
+    if not configured:
+        return {
+            "state": "not_configured",
+            "configured": configured,
+            "connected": connected,
+            "tray_count": tray_count,
+            "message": "Printer MQTT is not configured. Set PRINTER_IP, PRINTER_ACCESS_CODE, and PRINTER_SERIAL.",
+            "last_error": last_error,
+            "last_message_at": last_message_at,
+        }
+
+    if connected:
+        if tray_count == 0:
+            message = "Connected to printer. Waiting for AMS tray report..."
+        else:
+            message = f"Connected to printer. Loaded {tray_count} tray report(s)."
+        return {
+            "state": "connected",
+            "configured": configured,
+            "connected": connected,
+            "tray_count": tray_count,
+            "message": message,
+            "last_error": last_error,
+            "last_message_at": last_message_at,
+        }
+
+    message = "Printer MQTT is disconnected."
+    if last_error:
+        message = f"{message} {last_error}"
+    return {
+        "state": "disconnected",
+        "configured": configured,
+        "connected": connected,
+        "tray_count": tray_count,
+        "message": message,
+        "last_error": last_error,
+        "last_message_at": last_message_at,
+    }
+
+
+async def _build_trays_context(request: Request) -> dict:
+    request.app.state.mqtt.request_full_status()
+    tray_statuses = _build_tray_statuses(request)
+    spools, error = await _load_spools(request)
+    profiles = request.app.state.orcaslicer.get_profiles()
+    linked_spools = [s for s in spools if s.filament.is_linked]
+
+    return {
+        "request": request,
+        "trays": tray_statuses,
+        "spools": linked_spools,
+        "profiles": profiles,
+        "error": error,
+        "mqtt_status": _build_mqtt_status(request),
+    }
+
+
+@router.get("/trays")
+async def trays_page(request: Request) -> HTMLResponse:
+    context = await _build_trays_context(request)
+    context["active_page"] = "trays"
+    return templates.TemplateResponse("trays.html", context)
+
+
+@router.get("/trays/content")
+async def trays_content(request: Request) -> HTMLResponse:
+    context = await _build_trays_context(request)
+    return templates.TemplateResponse("partials/trays_content.html", context)
+
+
+@router.get("/tray/{tray_index}")
+async def tray_detail(
+    request: Request,
+    tray_index: int,
+    search: str = Query(default=""),
+) -> HTMLResponse:
+    tray_statuses = _build_tray_statuses(request)
+    tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
+    if tray is None:
+        raise HTTPException(status_code=404, detail="Tray not found")
+
+    spools, error = await _load_spools(request)
+    linked_spools = [s for s in spools if s.filament.is_linked]
+    profiles = request.app.state.orcaslicer.get_profiles()
+
+    term = search.strip().lower()
+    if term:
+        linked_spools = [
+            s for s in linked_spools
+            if term in s.display_name.lower() or term in (s.filament.material or "").lower()
+        ]
+
+    return templates.TemplateResponse(
+        "partials/tray_detail.html",
+        {
+            "request": request,
+            "tray": tray,
+            "spools": linked_spools,
+            "profiles": profiles,
+            "search": search,
+            "error": error,
+        },
+    )
+
+
+@router.post("/tray/{tray_index}/assign")
+async def assign_spool_to_tray(
+    request: Request,
+    tray_index: int,
+    spool_id: int = Form(...),
+) -> HTMLResponse:
+    spools, _ = await _load_spools(request)
+    spool = next((s for s in spools if s.id == spool_id), None)
+    if spool is None:
+        raise HTTPException(status_code=400, detail="Spool not found")
+
+    filament = spool.filament
+    if not filament.is_linked:
+        raise HTTPException(status_code=400, detail="Spool filament is not linked to a profile")
+
+    orcaslicer = request.app.state.orcaslicer
+    profile = orcaslicer.find_profile(
+        filament.bambu_setting_id or "",
+        filament.bambu_filament_id or "",
+    )
+    if not profile:
+        raise HTTPException(status_code=400, detail="Linked profile not found")
+
+    mqtt = request.app.state.mqtt
+    success, message = mqtt.activate_filament(
+        tray=tray_index,
+        filament_id=profile.filament_id,
+        color_hex=filament.color_hex or "FFFFFF",
+        nozzle_temp_min=profile.nozzle_temp_min,
+        nozzle_temp_max=profile.nozzle_temp_max,
+        filament_type=profile.filament_type,
+    )
+
+    if not success:
+        raise HTTPException(status_code=502, detail=f"Failed to activate: {message}")
+
+    tray_statuses = _build_tray_statuses(request)
+    spools_fresh, error = await _load_spools(request)
+    linked_spools = [s for s in spools_fresh if s.filament.is_linked]
+    profiles = request.app.state.orcaslicer.get_profiles()
+
+    return templates.TemplateResponse(
+        "partials/tray_card.html",
+        {
+            "request": request,
+            "tray": tray_statuses[tray_index],
+            "spools": linked_spools,
+            "profiles": profiles,
+            "assign_success": f"Assigned {spool.display_name} to {tray_statuses[tray_index].label}",
+        },
+    )
 
 
 @router.get("/profiles")

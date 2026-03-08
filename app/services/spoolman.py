@@ -6,7 +6,7 @@ import json
 
 import httpx
 
-from app.models import SpoolmanFilament
+from app.models import SpoolmanFilament, SpoolmanSpool
 
 
 class SpoolmanClient:
@@ -21,6 +21,12 @@ class SpoolmanClient:
 
     async def close(self) -> None:
         await self._client.aclose()
+
+    async def get_spools(self) -> list[SpoolmanSpool]:
+        response = await self._client.get("/api/v1/spool")
+        response.raise_for_status()
+        payload = response.json()
+        return [SpoolmanSpool.model_validate(item) for item in payload if not item.get("archived")]
 
     async def get_filaments(self) -> list[SpoolmanFilament]:
         response = await self._client.get("/api/v1/filament")

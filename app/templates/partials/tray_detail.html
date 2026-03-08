@@ -1,0 +1,44 @@
+<div class="space-y-2">
+  <form
+    class="flex gap-2"
+    hx-get="/web/tray/{{ tray.tray_index }}"
+    hx-target="#tray-detail-{{ tray.tray_index }}"
+    hx-trigger="input changed delay:250ms from:find input[type=search], submit"
+  >
+    <input
+      name="search"
+      type="search"
+      value="{{ search|default('', true) }}"
+      placeholder="Search spools"
+      class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+    />
+  </form>
+
+  {% if spools %}
+    <form
+      hx-post="/web/tray/{{ tray.tray_index }}/assign"
+      hx-target="#tray-card-{{ tray.tray_index }}"
+      hx-swap="innerHTML"
+      class="space-y-2"
+    >
+      <select name="spool_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
+        {% for spool in spools %}
+          <option value="{{ spool.id }}">
+            {{ spool.display_name }}{% if spool.filament.material %} ({{ spool.filament.material }}){% endif %}{% if spool.remaining_weight is not none %} - {{ spool.remaining_weight|round|int }}g{% endif %}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="w-full rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30" type="submit">
+        Assign to {{ tray.label }}
+      </button>
+    </form>
+  {% else %}
+    <div class="rounded-md border border-dashed border-slate-700 p-2 text-xs text-slate-400">
+      {% if error is defined and error %}
+        {{ error }}
+      {% else %}
+        No linked spools available. Link filaments to profiles first.
+      {% endif %}
+    </div>
+  {% endif %}
+</div>
