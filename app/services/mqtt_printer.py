@@ -24,8 +24,18 @@ class TrayData:
         self.tray_type: str = ""
         self.tray_color: str = ""
         self.tray_info_idx: str = ""
+        self.setting_id: str = ""
+        self.tray_sub_brands: str = ""
+        self.tag_uid: str = ""
         self.nozzle_temp_min: int = 0
         self.nozzle_temp_max: int = 0
+        self.bed_temp: int = 0
+        self.remain: int = -1
+        self.tray_weight: int = 0
+        self.k: float | None = None
+        self.n: float | None = None
+        self.tray_uuid: str = ""
+        self.cali_idx: int = -1
 
 
 class MQTTPrinterClient:
@@ -59,6 +69,13 @@ class MQTTPrinterClient:
     def _to_int(value: object, default: int = 0) -> int:
         try:
             return int(value)
+        except (TypeError, ValueError):
+            return default
+
+    @staticmethod
+    def _to_float(value: object, default: float | None = None) -> float | None:
+        try:
+            return float(value)  # type: ignore[arg-type]
         except (TypeError, ValueError):
             return default
 
@@ -135,11 +152,21 @@ class MQTTPrinterClient:
     def activate_filament(
         self,
         tray: int,
-        filament_id: str,
+        tray_info_idx: str,
         color_hex: str,
         nozzle_temp_min: int,
         nozzle_temp_max: int,
         filament_type: str,
+        *,
+        setting_id: str | None = None,
+        tag_uid: str | None = None,
+        bed_temp: int | None = None,
+        tray_weight: int | None = None,
+        remain: int | None = None,
+        k: float | None = None,
+        n: float | None = None,
+        tray_uuid: str | None = None,
+        cali_idx: int | None = None,
     ) -> tuple[bool, str]:
         if not self.configured:
             return True, "MQTT not configured; command skipped"
@@ -162,20 +189,38 @@ class MQTTPrinterClient:
                 "command": "ams_filament_setting",
                 "ams_id": ams_id,
                 "tray_id": tray_id,
-                "tray_info_idx": filament_id,
+                "tray_info_idx": tray_info_idx,
                 "tray_color": self._normalize_color(color_hex),
                 "nozzle_temp_min": nozzle_temp_min,
                 "nozzle_temp_max": nozzle_temp_max,
                 "tray_type": filament_type,
             }
         }
+        if setting_id:
+            payload["print"]["setting_id"] = setting_id
+        if tag_uid:
+            payload["print"]["tag_uid"] = tag_uid
+        if bed_temp is not None:
+            payload["print"]["bed_temp"] = bed_temp
+        if tray_weight is not None:
+            payload["print"]["tray_weight"] = tray_weight
+        if remain is not None:
+            payload["print"]["remain"] = remain
+        if k is not None:
+            payload["print"]["k"] = k
+        if n is not None:
+            payload["print"]["n"] = n
+        if tray_uuid:
+            payload["print"]["tray_uuid"] = tray_uuid
+        if cali_idx is not None:
+            payload["print"]["cali_idx"] = cali_idx
 
         topic = f"device/{self._serial}/request"
         logger.info(
-            "Publishing AMS filament setting to topic=%s tray=%d filament_id=%s",
+            "Publishing AMS filament setting to topic=%s tray=%d tray_info_idx=%s",
             topic,
             tray,
-            filament_id,
+            tray_info_idx,
         )
         publish_info = client.publish(topic, json.dumps(payload))
         if publish_info.rc != mqtt.MQTT_ERR_SUCCESS:
@@ -187,7 +232,7 @@ class MQTTPrinterClient:
             logger.error("MQTT publish timeout to topic=%s", topic)
             return False, "MQTT publish timeout"
 
-        logger.info("MQTT publish succeeded for tray=%d filament_id=%s", tray, filament_id)
+        logger.info("MQTT publish succeeded for tray=%d tray_info_idx=%s", tray, tray_info_idx)
         return True, "Command sent to printer"
 
     def _next_sequence(self) -> int:
@@ -264,10 +309,32 @@ class MQTTPrinterClient:
                         td.tray_color = str(tray["tray_color"])
                     if "tray_info_idx" in tray:
                         td.tray_info_idx = str(tray["tray_info_idx"])
+                        if "setting_id" not in tray:
+                            td.setting_id = td.tray_info_idx
+                    if "setting_id" in tray:
+                        td.setting_id = str(tray["setting_id"])
+                    if "tray_sub_brands" in tray:
+                        td.tray_sub_brands = str(tray["tray_sub_brands"])
+                    if "tag_uid" in tray:
+                        td.tag_uid = str(tray["tag_uid"])
                     if "nozzle_temp_min" in tray:
                         td.nozzle_temp_min = self._to_int(tray["nozzle_temp_min"], default=0)
                     if "nozzle_temp_max" in tray:
                         td.nozzle_temp_max = self._to_int(tray["nozzle_temp_max"], default=0)
+                    if "bed_temp" in tray:
+                        td.bed_temp = self._to_int(tray["bed_temp"], default=0)
+                    if "remain" in tray:
+                        td.remain = self._to_int(tray["remain"], default=-1)
+                    if "tray_weight" in tray:
+                        td.tray_weight = self._to_int(tray["tray_weight"], default=0)
+                    if "k" in tray:
+                        td.k = self._to_float(tray["k"])
+                    if "n" in tray:
+                        td.n = self._to_float(tray["n"])
+                    if "tray_uuid" in tray:
+                        td.tray_uuid = str(tray["tray_uuid"])
+                    if "cali_idx" in tray:
+                        td.cali_idx = self._to_int(tray["cali_idx"], default=-1)
 
             vt_tray = print_data.get("vt_tray")
             if vt_tray:
@@ -278,10 +345,32 @@ class MQTTPrinterClient:
                     td.tray_color = str(vt_tray["tray_color"])
                 if "tray_info_idx" in vt_tray:
                     td.tray_info_idx = str(vt_tray["tray_info_idx"])
+                    if "setting_id" not in vt_tray:
+                        td.setting_id = td.tray_info_idx
+                if "setting_id" in vt_tray:
+                    td.setting_id = str(vt_tray["setting_id"])
+                if "tray_sub_brands" in vt_tray:
+                    td.tray_sub_brands = str(vt_tray["tray_sub_brands"])
+                if "tag_uid" in vt_tray:
+                    td.tag_uid = str(vt_tray["tag_uid"])
                 if "nozzle_temp_min" in vt_tray:
                     td.nozzle_temp_min = self._to_int(vt_tray["nozzle_temp_min"], default=0)
                 if "nozzle_temp_max" in vt_tray:
                     td.nozzle_temp_max = self._to_int(vt_tray["nozzle_temp_max"], default=0)
+                if "bed_temp" in vt_tray:
+                    td.bed_temp = self._to_int(vt_tray["bed_temp"], default=0)
+                if "remain" in vt_tray:
+                    td.remain = self._to_int(vt_tray["remain"], default=-1)
+                if "tray_weight" in vt_tray:
+                    td.tray_weight = self._to_int(vt_tray["tray_weight"], default=0)
+                if "k" in vt_tray:
+                    td.k = self._to_float(vt_tray["k"])
+                if "n" in vt_tray:
+                    td.n = self._to_float(vt_tray["n"])
+                if "tray_uuid" in vt_tray:
+                    td.tray_uuid = str(vt_tray["tray_uuid"])
+                if "cali_idx" in vt_tray:
+                    td.cali_idx = self._to_int(vt_tray["cali_idx"], default=-1)
             tray_count = len(self._trays)
         logger.debug("Parsed AMS report; cached trays=%d", tray_count)
 

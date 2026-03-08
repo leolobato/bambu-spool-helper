@@ -121,6 +121,8 @@ class OrcaSlicerClient:
             drying_time=OrcaSlicerClient._extract_first_int(detail, "filament_dev_ams_drying_time"),
             print_speed_min=OrcaSlicerClient._extract_first_int(detail, "slow_down_min_speed"),
             print_speed_max=OrcaSlicerClient._extract_first_int(detail, "filament_max_volumetric_speed"),
+            k=OrcaSlicerClient._extract_first_float(detail, "k"),
+            n=OrcaSlicerClient._extract_first_float(detail, "n"),
             source="system",
         )
 
@@ -158,6 +160,17 @@ class OrcaSlicerClient:
         if raw is None:
             return ""
         return str(raw).strip()
+
+    @staticmethod
+    def _extract_first_float(payload: dict[str, Any], key: str) -> float | None:
+        raw = payload.get(key)
+        candidate = raw[0] if isinstance(raw, list) and raw else raw
+        if candidate is None:
+            return None
+        try:
+            return float(str(candidate).strip())
+        except (TypeError, ValueError):
+            return None
 
     @staticmethod
     def _to_int(value: Any) -> int | None:

@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import re
 from pathlib import Path
 
 import httpx
@@ -222,8 +221,18 @@ def _build_tray_statuses(request: Request) -> list[TrayStatus]:
                 tray_type=td.tray_type,
                 tray_color=td.tray_color,
                 tray_info_idx=td.tray_info_idx,
+                setting_id=td.setting_id or td.tray_info_idx,
+                tray_sub_brands=td.tray_sub_brands,
+                tag_uid=td.tag_uid,
                 nozzle_temp_min=td.nozzle_temp_min,
                 nozzle_temp_max=td.nozzle_temp_max,
+                bed_temp=td.bed_temp,
+                remain=td.remain,
+                tray_weight=td.tray_weight,
+                k=td.k,
+                n=td.n,
+                tray_uuid=td.tray_uuid,
+                cali_idx=td.cali_idx,
             ))
         else:
             statuses.append(TrayStatus(tray_index=i))
@@ -238,81 +247,6 @@ async def _load_spools(request: Request) -> tuple[list[SpoolmanSpool], str | Non
         logger.warning("Failed to fetch spools from Spoolman: %s", exc)
         return [], f"Spoolman request failed: {exc}"
     return spools, None
-
-
-def _normalize_match_key(value: str | None) -> str:
-    return (value or "").strip().upper()
-
-
-def _split_setting_id(value: str) -> tuple[str, str]:
-    match = re.match(r"^([A-Za-z]+)(\d+(?:_\d+)?)$", value)
-    if not match:
-        return value, ""
-    return match.group(1).upper(), match.group(2).split("_")[0]
-
-
-def _is_fuzzy_setting_match(tray_setting: str, spool_setting: str) -> bool:
-    if not tray_setting or not spool_setting:
-        return False
-    tray_prefix, tray_num = _split_setting_id(tray_setting)
-    spool_prefix, spool_num = _split_setting_id(spool_setting)
-    if tray_num != spool_num:
-        return False
-    return (
-        tray_prefix == spool_prefix
-        or tray_prefix in spool_prefix
-        or spool_prefix in tray_prefix
-        or tray_prefix.replace("S", "") == spool_prefix.replace("S", "")
-    )
-
-
-def _build_tray_picker_state(tray: TrayStatus, linked_spools: list[SpoolmanSpool]) -> dict[str, int | str | None]:
-    tray_key = _normalize_match_key(tray.tray_info_idx)
-    if not tray_key:
-        return {"selected_spool_id": None, "no_match_message": None}
-
-    exact_setting_matches: list[SpoolmanSpool] = []
-    exact_filament_matches: list[SpoolmanSpool] = []
-    fuzzy_setting_matches: list[SpoolmanSpool] = []
-
-    for spool in linked_spools:
-        setting_key = _normalize_match_key(spool.filament.bambu_setting_id)
-        filament_key = _normalize_match_key(spool.filament.bambu_filament_id)
-        if tray_key == setting_key:
-            exact_setting_matches.append(spool)
-        elif tray_key == filament_key:
-            exact_filament_matches.append(spool)
-        elif _is_fuzzy_setting_match(tray_key, setting_key):
-            fuzzy_setting_matches.append(spool)
-
-    def _pick_first(matches: list[SpoolmanSpool]) -> int | None:
-        if not matches:
-            return None
-        best = sorted(matches, key=lambda item: (item.display_name.lower(), item.id))[0]
-        return best.id
-
-    selected_spool_id = _pick_first(exact_setting_matches)
-    if selected_spool_id is None:
-        selected_spool_id = _pick_first(exact_filament_matches)
-    if selected_spool_id is None:
-        selected_spool_id = _pick_first(fuzzy_setting_matches)
-    if selected_spool_id is not None:
-        return {"selected_spool_id": selected_spool_id, "no_match_message": None}
-
-    return {
-        "selected_spool_id": None,
-        "no_match_message": f"No linked spool matches AMS setting {tray.tray_info_idx}.",
-    }
-
-
-def _build_tray_picker_states(
-    trays: list[TrayStatus],
-    linked_spools: list[SpoolmanSpool],
-) -> dict[int, dict[str, int | str | None]]:
-    return {
-        tray.tray_index: _build_tray_picker_state(tray, linked_spools)
-        for tray in trays
-    }
 
 
 def _build_mqtt_status(request: Request) -> dict[str, str | int | bool | None]:
@@ -367,16 +301,12 @@ async def _build_trays_context(request: Request) -> dict:
     request.app.state.mqtt.request_full_status()
     tray_statuses = _build_tray_statuses(request)
     spools, error = await _load_spools(request)
-    profiles = request.app.state.orcaslicer.get_profiles()
     linked_spools = [s for s in spools if s.filament.is_linked]
-    tray_picker_states = _build_tray_picker_states(tray_statuses, linked_spools)
 
     return {
         "request": request,
         "trays": tray_statuses,
         "spools": linked_spools,
-        "profiles": profiles,
-        "tray_picker_states": tray_picker_states,
         "error": error,
         "mqtt_status": _build_mqtt_status(request),
     }
@@ -408,8 +338,6 @@ async def tray_detail(
 
     spools, error = await _load_spools(request)
     linked_spools = [s for s in spools if s.filament.is_linked]
-    profiles = request.app.state.orcaslicer.get_profiles()
-    picker_state = _build_tray_picker_state(tray, linked_spools)
 
     term = search.strip().lower()
     if term:
@@ -424,11 +352,8 @@ async def tray_detail(
             "request": request,
             "tray": tray,
             "spools": linked_spools,
-            "profiles": profiles,
             "search": search,
             "error": error,
-            "selected_spool_id": picker_state["selected_spool_id"],
-            "no_match_message": picker_state["no_match_message"],
         },
     )
 
@@ -447,23 +372,37 @@ async def assign_spool_to_tray(
     filament = spool.filament
     if not filament.is_linked:
         raise HTTPException(status_code=400, detail="Spool filament is not linked to a profile")
+    bambu_setting_id = (filament.bambu_setting_id or "").strip()
+    if not bambu_setting_id:
+        raise HTTPException(status_code=400, detail="Spool filament missing bambu_setting_id")
 
-    orcaslicer = request.app.state.orcaslicer
-    profile = orcaslicer.find_profile(
-        filament.bambu_setting_id or "",
-        filament.bambu_filament_id or "",
-    )
+    tray_statuses = _build_tray_statuses(request)
+    tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
+    if tray is None:
+        raise HTTPException(status_code=404, detail="Tray not found")
+
+    profiles = request.app.state.orcaslicer.get_profiles()
+    profile = next((p for p in profiles if p.setting_id == bambu_setting_id), None)
     if not profile:
-        raise HTTPException(status_code=400, detail="Linked profile not found")
+        raise HTTPException(status_code=400, detail=f"OrcaSlicer profile not found for setting_id={bambu_setting_id}")
 
     mqtt = request.app.state.mqtt
     success, message = mqtt.activate_filament(
         tray=tray_index,
-        filament_id=profile.filament_id,
+        tray_info_idx=profile.setting_id,
         color_hex=filament.color_hex or "FFFFFF",
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
         filament_type=profile.filament_type,
+        setting_id=profile.setting_id,
+        tag_uid=tray.tag_uid or None,
+        bed_temp=profile.bed_temp_min,
+        tray_weight=tray.tray_weight if tray.tray_weight > 0 else None,
+        remain=-1,
+        k=profile.k,
+        n=profile.n,
+        tray_uuid=tray.tray_uuid or None,
+        cali_idx=tray.cali_idx if tray.cali_idx >= 0 else -1,
     )
 
     if not success:
@@ -472,9 +411,9 @@ async def assign_spool_to_tray(
     tray_statuses = _build_tray_statuses(request)
     spools_fresh, error = await _load_spools(request)
     linked_spools = [s for s in spools_fresh if s.filament.is_linked]
-    profiles = request.app.state.orcaslicer.get_profiles()
-    tray = tray_statuses[tray_index]
-    picker_state = _build_tray_picker_state(tray, linked_spools)
+    tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
+    if tray is None:
+        raise HTTPException(status_code=404, detail="Tray not found")
 
     return templates.TemplateResponse(
         "partials/tray_card.html",
@@ -482,9 +421,6 @@ async def assign_spool_to_tray(
             "request": request,
             "tray": tray,
             "spools": linked_spools,
-            "profiles": profiles,
-            "selected_spool_id": picker_state["selected_spool_id"],
-            "no_match_message": picker_state["no_match_message"],
             "assign_success": f"Assigned {spool.display_name} to {tray.label}",
         },
     )

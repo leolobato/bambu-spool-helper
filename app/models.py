@@ -23,6 +23,8 @@ class FilamentProfileResponse(BaseModel):
     drying_time: int
     print_speed_min: int
     print_speed_max: int
+    k: float | None = None
+    n: float | None = None
     source: Literal["system", "user"] = "system"
 
 
@@ -58,8 +60,18 @@ class TrayStatus(BaseModel):
     tray_type: str = ""
     tray_color: str = ""
     tray_info_idx: str = ""
+    setting_id: str = ""
+    tray_sub_brands: str = ""
+    tag_uid: str = ""
     nozzle_temp_min: int = 0
     nozzle_temp_max: int = 0
+    bed_temp: int = 0
+    remain: int = -1
+    tray_weight: int = 0
+    k: float | None = None
+    n: float | None = None
+    tray_uuid: str = ""
+    cali_idx: int = -1
 
     @property
     def label(self) -> str:

@@ -57,11 +57,17 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
 
     success, mqtt_message = mqtt.activate_filament(
         tray=payload.tray,
-        filament_id=profile.filament_id,
+        tray_info_idx=profile.setting_id,
         color_hex=payload.color_hex,
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
         filament_type=profile.filament_type,
+        setting_id=profile.setting_id,
+        bed_temp=profile.bed_temp_min,
+        k=profile.k,
+        n=profile.n,
+        cali_idx=-1,
+        remain=-1,
     )
 
     tray_label = TRAY_LABELS[payload.tray]
