@@ -143,7 +143,7 @@ class SpoolmanFilament(BaseModel):
 
     @property
     def is_linked(self) -> bool:
-        return bool(self.ams_filament_id)
+        return bool(self.ams_filament_id and self.ams_filament_type)
 
 
 class SpoolmanSpool(BaseModel):

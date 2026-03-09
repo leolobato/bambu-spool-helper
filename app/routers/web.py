@@ -379,7 +379,7 @@ async def create_profile_modal(
 
     profiles = request.app.state.orcaslicer.get_profiles()
     base_options = _base_profile_options(profiles)
-    inferred_filament_type = (filament.ams_filament_type or filament.material or "").strip()
+    inferred_filament_type = (filament.material or filament.ams_filament_type or "").strip()
     preferred_base = _recommended_base_profile(profiles, inferred_filament_type)
     selected_base_setting_id = preferred_base.setting_id if preferred_base else ""
     if not inferred_filament_type and preferred_base:
