@@ -8,7 +8,7 @@
     class="flex gap-2"
     hx-get="/web/profiles"
     hx-target="#profile-picker"
-    hx-trigger="input changed delay:250ms from:#profile-search, submit"
+    hx-trigger="input changed delay:250ms, search, submit"
   >
     <input type="hidden" name="filament_id" value="{{ filament_id }}" />
     <input type="hidden" name="selected_tray_info_idx" value="{{ selected_tray_info_idx }}" />
@@ -17,7 +17,7 @@
       name="search"
       type="search"
       value="{{ profile_search }}"
-      placeholder="Search profile name or type"
+      placeholder="Search profile name, type, or ID"
       class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
     />
   </form>

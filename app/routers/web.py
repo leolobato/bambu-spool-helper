@@ -21,13 +21,35 @@ templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent
 
 
 def _filter_profiles(profiles: list[FilamentProfileResponse], search: str) -> list[FilamentProfileResponse]:
-    term = search.strip().lower()
+    term = search.strip().casefold()
     if not term:
         return profiles
+
+    def _profile_id_terms(value: str) -> list[str]:
+        normalized = str(value or "").strip().upper()
+        if not normalized:
+            return []
+        variants = [normalized]
+        if normalized.startswith("O"):
+            variants.append(normalized[1:])
+        else:
+            variants.append(f"O{normalized}")
+        return variants
+
     return [
         profile
         for profile in profiles
-        if term in profile.name.lower() or term in profile.filament_type.lower()
+        if any(
+            term in candidate
+            for candidate in (
+                profile.name.casefold(),
+                profile.filament_type.casefold(),
+                profile.tray_info_idx.casefold(),
+                profile.filament_id.casefold(),
+                *[value.casefold() for value in _profile_id_terms(profile.tray_info_idx)],
+                *[value.casefold() for value in _profile_id_terms(profile.filament_id)],
+            )
+        )
     ]
 
 
@@ -316,10 +338,21 @@ def _build_tray_statuses(request: Request) -> list[TrayStatus]:
     return statuses
 
 
+def _sort_spools(spools: list[SpoolmanSpool]) -> list[SpoolmanSpool]:
+    return sorted(
+        spools,
+        key=lambda spool: (
+            spool.display_name.casefold(),
+            (spool.filament.material or "").casefold(),
+            spool.id,
+        ),
+    )
+
+
 async def _load_spools(request: Request) -> tuple[list[SpoolmanSpool], str | None]:
     spoolman = request.app.state.spoolman
     try:
-        spools = await spoolman.get_spools()
+        spools = _sort_spools(await spoolman.get_spools())
     except httpx.HTTPError as exc:
         logger.warning("Failed to fetch spools from Spoolman: %s", exc)
         return [], f"Spoolman request failed: {exc}"
