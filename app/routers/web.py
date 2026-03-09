@@ -25,17 +25,6 @@ def _filter_profiles(profiles: list[FilamentProfileResponse], search: str) -> li
     if not term:
         return profiles
 
-    def _profile_id_terms(value: str) -> list[str]:
-        normalized = str(value or "").strip().upper()
-        if not normalized:
-            return []
-        variants = [normalized]
-        if normalized.startswith("O"):
-            variants.append(normalized[1:])
-        else:
-            variants.append(f"O{normalized}")
-        return variants
-
     return [
         profile
         for profile in profiles
@@ -44,10 +33,7 @@ def _filter_profiles(profiles: list[FilamentProfileResponse], search: str) -> li
             for candidate in (
                 profile.name.casefold(),
                 profile.filament_type.casefold(),
-                profile.tray_info_idx.casefold(),
                 profile.filament_id.casefold(),
-                *[value.casefold() for value in _profile_id_terms(profile.tray_info_idx)],
-                *[value.casefold() for value in _profile_id_terms(profile.filament_id)],
             )
         )
     ]
@@ -60,15 +46,7 @@ def _normalize_profile_id(value: str) -> str:
 def _profile_ids_match(left: str, right: str) -> bool:
     left_norm = _normalize_profile_id(left)
     right_norm = _normalize_profile_id(right)
-    if not left_norm or not right_norm:
-        return False
-    if left_norm == right_norm:
-        return True
-    if left_norm.startswith("O") and left_norm[1:] == right_norm:
-        return True
-    if right_norm.startswith("O") and right_norm[1:] == left_norm:
-        return True
-    return False
+    return bool(left_norm and right_norm and left_norm == right_norm)
 
 
 def _find_profile_by_linked_id(
@@ -79,17 +57,8 @@ def _find_profile_by_linked_id(
     if not linked_id:
         return None
 
-    # Primary: linked id is Orca filament_id.
-    profile = next(
-        (profile for profile in profiles if _profile_ids_match(profile.filament_id, linked_id)),
-        None,
-    )
-    if profile:
-        return profile
-
-    # Backward compatibility: older links stored tray_info_idx.
     return next(
-        (profile for profile in profiles if _profile_ids_match(profile.tray_info_idx, linked_id)),
+        (profile for profile in profiles if _profile_ids_match(profile.filament_id, linked_id)),
         None,
     )
 
@@ -264,9 +233,10 @@ async def import_profile_upload(
             error_message=f"Import request failed: {exc}",
         )
 
-    tray_info_idx = str(result.get("tray_info_idx", "")).strip()
-    success_message = f"Imported profile {result.get('name', tray_info_idx or 'successfully')}."
-    headers = {"HX-Trigger": json.dumps({"profiles-imported": {"tray_info_idx": tray_info_idx}})}
+    profile_name = str(result.get("name", "")).strip()
+    profile_id = str(result.get("filament_id") or "").strip()
+    success_message = f"Imported profile {profile_name or profile_id or 'successfully'}."
+    headers = {"HX-Trigger": json.dumps({"profiles-imported": True})}
     return _render_import_profile_modal(
         request,
         success_message=success_message,
@@ -533,14 +503,14 @@ async def assign_spool_to_tray(
             status_code=400,
             detail=f"OrcaSlicer profile not found for filament_id={linked_filament_id}",
         )
-    tray_info_idx = (profile.filament_id or "").strip()
-    if not tray_info_idx:
+    ams_payload_filament_id = (profile.filament_id or "").strip()
+    if not ams_payload_filament_id:
         raise HTTPException(status_code=400, detail="Linked profile missing filament_id")
 
     mqtt = request.app.state.mqtt
     success, message = mqtt.activate_filament(
         tray=tray_index,
-        tray_info_idx=tray_info_idx,
+        tray_info_idx=ams_payload_filament_id,
         color_hex=filament.color_hex or "FFFFFF",
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
@@ -584,7 +554,10 @@ async def profile_picker(
     search: str = Query(default=""),
 ) -> HTMLResponse:
     profiles = request.app.state.orcaslicer.get_profiles()
-    filtered_profiles = _filter_profiles(profiles, search)
+    filtered_profiles = [
+        profile for profile in _filter_profiles(profiles, search)
+        if profile.filament_id.strip()
+    ]
     selected_profile = _find_profile_by_linked_id(profiles, selected_linked_filament_id)
     selected_linked_filament_id_canonical = (
         selected_profile.filament_id if selected_profile else selected_linked_filament_id

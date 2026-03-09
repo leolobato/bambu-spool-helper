@@ -45,20 +45,24 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
     orcaslicer = request.app.state.orcaslicer
     mqtt = request.app.state.mqtt
 
-    profile = orcaslicer.find_profile(payload.tray_info_idx, payload.filament_id)
+    profile = orcaslicer.find_profile(payload.filament_id)
     if not profile:
         return ActivateResponse(
             success=False,
             profile_name="",
-            message=(
-                f"No profile found for tray_info_idx={payload.tray_info_idx}, "
-                f"filament_id={payload.filament_id}"
-            ),
+            message=f"No profile found for filament_id={payload.filament_id}",
+        )
+    ams_payload_filament_id = (profile.filament_id or "").strip()
+    if not ams_payload_filament_id:
+        return ActivateResponse(
+            success=False,
+            profile_name=profile.name,
+            message=f"Profile {profile.name} has no filament_id",
         )
 
     success, mqtt_message = mqtt.activate_filament(
         tray=payload.tray,
-        tray_info_idx=profile.tray_info_idx,
+        tray_info_idx=ams_payload_filament_id,
         color_hex=payload.color_hex,
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,

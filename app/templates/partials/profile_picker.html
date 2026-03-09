@@ -31,9 +31,8 @@
       <input type="hidden" name="profile_search" value="{{ profile_search }}" />
       <select name="linked_filament_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
         {% for profile in profiles %}
-          {% set profile_id = profile.filament_id or profile.tray_info_idx %}
-          <option value="{{ profile_id }}" {% if profile_id == selected_linked_filament_id %}selected{% endif %}>
-            {{ profile.name }} | {{ profile.filament_type }} | {{ profile.filament_id }} | {{ profile.tray_info_idx }}
+          <option value="{{ profile.filament_id }}" {% if profile.filament_id == selected_linked_filament_id %}selected{% endif %}>
+            {{ profile.name }} | {{ profile.filament_type }} | {{ profile.filament_id }}
           </option>
         {% endfor %}
       </select>

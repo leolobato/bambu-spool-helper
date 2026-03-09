@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class FilamentProfileResponse(BaseModel):
     name: str
     filament_id: str
-    tray_info_idx: str
+    setting_id: str
     filament_type: str
     nozzle_temp_min: int
     nozzle_temp_max: int
@@ -35,7 +35,6 @@ class StatusResponse(BaseModel):
 
 
 class ActivateRequest(BaseModel):
-    tray_info_idx: str
     filament_id: str
     tray: int = Field(ge=0, le=4)
     color_hex: str

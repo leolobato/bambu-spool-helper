@@ -29,7 +29,7 @@
         <div class="mt-1 text-xs text-emerald-200/80">filament_id: {{ filament.ams_filament_id }}</div>
         {% if linked_profile %}
           <div class="mt-1 text-emerald-100">{{ linked_profile.name }}</div>
-          <div class="mt-1 text-xs text-emerald-200/80">{{ linked_profile.filament_type }} | tray_info_idx={{ linked_profile.tray_info_idx }} | filament_id={{ linked_profile.filament_id }}</div>
+          <div class="mt-1 text-xs text-emerald-200/80">{{ linked_profile.filament_type }} | filament_id={{ linked_profile.filament_id }}</div>
         {% else %}
           <div class="mt-1 text-amber-200">No Orca profile currently matches this filament_id.</div>
         {% endif %}

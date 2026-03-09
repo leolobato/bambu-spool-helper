@@ -65,7 +65,6 @@ Activates a filament profile on a printer tray.
 
 ```json
 {
-  "tray_info_idx": "GFB99",
   "filament_id": "GFB99",
   "tray": 0,
   "color_hex": "FF0000"

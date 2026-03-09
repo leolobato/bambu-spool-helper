@@ -44,11 +44,11 @@ class OrcaSlicerClient:
         semaphore = asyncio.Semaphore(self._detail_fetch_concurrency)
 
         async def fetch_detail(summary: dict[str, Any]) -> FilamentProfileResponse | None:
-            tray_info_idx = self._extract_profile_id(summary)
-            if not tray_info_idx:
+            setting_id = self._extract_profile_id(summary)
+            if not setting_id:
                 return None
             async with semaphore:
-                detail_response = await self._client.get(f"/profiles/filaments/{tray_info_idx}")
+                detail_response = await self._client.get(f"/profiles/filaments/{setting_id}")
             detail_response.raise_for_status()
             detail = detail_response.json()
             return self._build_profile(summary, detail)
@@ -63,6 +63,9 @@ class OrcaSlicerClient:
                 continue
             if result is None:
                 continue
+            if not result.filament_id:
+                logger.warning("Skipping filament profile with missing filament_id: %s", result.setting_id)
+                continue
             loaded_profiles.append(result)
 
         loaded_profiles.sort(key=lambda profile: profile.name.lower())
@@ -72,35 +75,14 @@ class OrcaSlicerClient:
     def get_profiles(self) -> list[FilamentProfileResponse]:
         return [profile.model_copy() for profile in self._profiles]
 
-    def find_profile(self, tray_info_idx: str, filament_id: str) -> FilamentProfileResponse | None:
-        tray_info_idx = self._normalize_id(tray_info_idx)
+    def find_profile(self, filament_id: str) -> FilamentProfileResponse | None:
         filament_id = self._normalize_id(filament_id)
-
-        exact = next(
-            (
-                profile
-                for profile in self._profiles
-                if self._ids_match(profile.tray_info_idx, tray_info_idx)
-                and self._ids_match(profile.filament_id, filament_id)
-            ),
-            None,
-        )
-        if exact:
-            return exact.model_copy()
-
-        tray_info_fallback = next(
-            (profile for profile in self._profiles if self._ids_match(profile.tray_info_idx, tray_info_idx)),
-            None,
-        )
-        if tray_info_fallback:
-            return tray_info_fallback.model_copy()
-
-        fallback = next(
+        match = next(
             (profile for profile in self._profiles if self._ids_match(profile.filament_id, filament_id)),
             None,
         )
-        if fallback:
-            return fallback.model_copy()
+        if match:
+            return match.model_copy()
         return None
 
     @staticmethod
@@ -111,29 +93,19 @@ class OrcaSlicerClient:
     def _ids_match(left: str, right: str) -> bool:
         left_norm = OrcaSlicerClient._normalize_id(left)
         right_norm = OrcaSlicerClient._normalize_id(right)
-        if not left_norm or not right_norm:
-            return False
-        if left_norm == right_norm:
-            return True
-        # Orca profiles may expose IDs prefixed with "O" (e.g. OGFA00) while
-        # Spoolman links may keep non-prefixed IDs (e.g. GFA00).
-        if left_norm.startswith("O") and left_norm[1:] == right_norm:
-            return True
-        if right_norm.startswith("O") and right_norm[1:] == left_norm:
-            return True
-        return False
+        return bool(left_norm and right_norm and left_norm == right_norm)
 
     @staticmethod
     def _extract_profile_id(payload: dict[str, Any]) -> str:
-        return str(payload.get("tray_info_idx") or payload.get("setting_id") or "").strip()
+        return str(payload.get("setting_id") or "").strip()
 
     @staticmethod
     def _normalize_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:
         normalized = dict(payload)
-        tray_info_idx = OrcaSlicerClient._extract_profile_id(normalized)
+        setting_id = OrcaSlicerClient._extract_profile_id(normalized)
         normalized.pop("setting_id", None)
-        if tray_info_idx:
-            normalized["tray_info_idx"] = tray_info_idx
+        if setting_id:
+            normalized["setting_id"] = setting_id
         return normalized
 
     @staticmethod
@@ -156,8 +128,9 @@ class OrcaSlicerClient:
             drying_temp_min = 0
             drying_temp_max = 0
 
-        filament_id = OrcaSlicerClient._extract_first_str(detail, "filament_id") or str(
-            OrcaSlicerClient._extract_profile_id(summary)
+        filament_id = (
+            OrcaSlicerClient._extract_first_str(detail, "filament_id")
+            or OrcaSlicerClient._extract_first_str(summary, "filament_id")
         )
         filament_type = (
             OrcaSlicerClient._extract_first_str(detail, "filament_type")
@@ -167,7 +140,7 @@ class OrcaSlicerClient:
         return FilamentProfileResponse(
             name=str(summary.get("name") or detail.get("name") or filament_id),
             filament_id=filament_id,
-            tray_info_idx=(
+            setting_id=(
                 OrcaSlicerClient._extract_profile_id(summary)
                 or OrcaSlicerClient._extract_profile_id(detail)
             ),
