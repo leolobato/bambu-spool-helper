@@ -25,7 +25,7 @@ async def lifespan(app: FastAPI):
 
     orcaslicer = OrcaSlicerClient(
         base_url=settings.orcaslicer_url,
-        machine_id=settings.default_machine_setting_id,
+        machine_id=settings.default_machine_profile_id,
         detail_fetch_concurrency=settings.detail_fetch_concurrency,
     )
     spoolman = SpoolmanClient(settings.spoolman_url)

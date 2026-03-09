@@ -32,6 +32,14 @@
           <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'trays' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/trays">AMS Trays</a>
           <button
             class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            hx-get="/web/import-profile"
+            hx-target="#modal"
+            hx-swap="innerHTML"
+          >
+            Import Profile
+          </button>
+          <button
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
             hx-post="/reload"
             hx-swap="none"
           >
@@ -42,5 +50,42 @@
 
       <main class="min-h-0 flex-1">{% block content %}{% endblock %}</main>
     </div>
+    <div id="modal"></div>
+    <script>
+      function closeModal() {
+        const modal = document.getElementById("modal");
+        if (modal) {
+          modal.innerHTML = "";
+        }
+      }
+
+      document.body.addEventListener("profiles-imported", function () {
+        const picker = document.getElementById("profile-picker");
+        if (!picker) {
+          return;
+        }
+
+        const filamentInput = picker.querySelector("input[name='filament_id']");
+        if (!filamentInput) {
+          return;
+        }
+
+        const params = new URLSearchParams({ filament_id: filamentInput.value });
+        const selectedInput = picker.querySelector("input[name='selected_tray_info_idx']");
+        if (selectedInput && selectedInput.value) {
+          params.set("selected_tray_info_idx", selectedInput.value);
+        }
+
+        const searchInput = picker.querySelector("#profile-search");
+        if (searchInput && searchInput.value) {
+          params.set("search", searchInput.value);
+        }
+
+        htmx.ajax("GET", "/web/profiles?" + params.toString(), {
+          target: "#profile-picker",
+          swap: "innerHTML"
+        });
+      });
+    </script>
   </body>
 </html>

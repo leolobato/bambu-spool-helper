@@ -24,7 +24,6 @@ class TrayData:
         self.tray_type: str = ""
         self.tray_color: str = ""
         self.tray_info_idx: str = ""
-        self.setting_id: str = ""
         self.tray_sub_brands: str = ""
         self.tag_uid: str = ""
         self.nozzle_temp_min: int = 0
@@ -158,7 +157,6 @@ class MQTTPrinterClient:
         nozzle_temp_max: int,
         filament_type: str,
         *,
-        setting_id: str | None = None,
         tag_uid: str | None = None,
         bed_temp: int | None = None,
         tray_weight: int | None = None,
@@ -196,8 +194,6 @@ class MQTTPrinterClient:
                 "tray_type": filament_type,
             }
         }
-        if setting_id:
-            payload["print"]["setting_id"] = setting_id
         if tag_uid:
             payload["print"]["tag_uid"] = tag_uid
         if bed_temp is not None:
@@ -309,10 +305,6 @@ class MQTTPrinterClient:
                         td.tray_color = str(tray["tray_color"])
                     if "tray_info_idx" in tray:
                         td.tray_info_idx = str(tray["tray_info_idx"])
-                        if "setting_id" not in tray:
-                            td.setting_id = td.tray_info_idx
-                    if "setting_id" in tray:
-                        td.setting_id = str(tray["setting_id"])
                     if "tray_sub_brands" in tray:
                         td.tray_sub_brands = str(tray["tray_sub_brands"])
                     if "tag_uid" in tray:
@@ -345,10 +337,6 @@ class MQTTPrinterClient:
                     td.tray_color = str(vt_tray["tray_color"])
                 if "tray_info_idx" in vt_tray:
                     td.tray_info_idx = str(vt_tray["tray_info_idx"])
-                    if "setting_id" not in vt_tray:
-                        td.setting_id = td.tray_info_idx
-                if "setting_id" in vt_tray:
-                    td.setting_id = str(vt_tray["setting_id"])
                 if "tray_sub_brands" in vt_tray:
                     td.tray_sub_brands = str(vt_tray["tray_sub_brands"])
                 if "tag_uid" in vt_tray:

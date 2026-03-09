@@ -14,12 +14,12 @@
 
     <div class="mt-4 grid gap-2 text-sm md:grid-cols-2">
       <div class="rounded-md border border-slate-700 p-2">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Bambu Setting ID</div>
-        <div class="font-mono text-slate-200">{{ filament.bambu_setting_id or "-" }}</div>
+        <div class="text-xs uppercase tracking-wide text-slate-400">AMS Filament ID</div>
+        <div class="font-mono text-slate-200">{{ filament.ams_filament_id or "-" }}</div>
       </div>
       <div class="rounded-md border border-slate-700 p-2">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Bambu Filament ID</div>
-        <div class="font-mono text-slate-200">{{ filament.bambu_filament_id or "-" }}</div>
+        <div class="text-xs uppercase tracking-wide text-slate-400">AMS Filament Type</div>
+        <div class="font-mono text-slate-200">{{ filament.ams_filament_type or "-" }}</div>
       </div>
     </div>
 
@@ -27,7 +27,7 @@
       <div class="mt-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm">
         <div class="font-medium text-emerald-200">Linked Profile</div>
         <div class="mt-1 text-emerald-100">{{ linked_profile.name }}</div>
-        <div class="mt-1 text-xs text-emerald-200/80">{{ linked_profile.filament_type }} | {{ linked_profile.setting_id }} | {{ linked_profile.filament_id }}</div>
+        <div class="mt-1 text-xs text-emerald-200/80">{{ linked_profile.filament_type }} | {{ linked_profile.tray_info_idx }} | {{ linked_profile.filament_id }}</div>
       </div>
     {% endif %}
 

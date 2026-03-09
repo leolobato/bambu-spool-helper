@@ -35,7 +35,7 @@ class Settings:
     printer_ip: str
     printer_access_code: str
     printer_serial: str
-    default_machine_setting_id: str
+    default_machine_profile_id: str
     port: int
     detail_fetch_concurrency: int
 
@@ -52,7 +52,7 @@ def get_settings() -> Settings:
         printer_ip=_env_str("PRINTER_IP"),
         printer_access_code=_env_str("PRINTER_ACCESS_CODE"),
         printer_serial=_env_str("PRINTER_SERIAL"),
-        default_machine_setting_id=_env_str("DEFAULT_MACHINE_SETTING_ID", "GM020"),
+        default_machine_profile_id=_env_str("DEFAULT_MACHINE_PROFILE_ID", "GM020"),
         port=_env_int("PORT", 9817),
         detail_fetch_concurrency=max(1, _env_int("DETAIL_FETCH_CONCURRENCY", 10)),
     )

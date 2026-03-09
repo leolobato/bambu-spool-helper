@@ -43,7 +43,7 @@ The service will be available at `http://localhost:9817`.
 | `PRINTER_IP` | _(empty)_ | Bambu printer IP address |
 | `PRINTER_ACCESS_CODE` | _(empty)_ | Printer access code (from printer settings) |
 | `PRINTER_SERIAL` | _(empty)_ | Printer serial number |
-| `DEFAULT_MACHINE_SETTING_ID` | `GM020` | Machine profile for filtering (A1 mini) |
+| `DEFAULT_MACHINE_PROFILE_ID` | `GM020` | Machine profile for filtering (A1 mini) |
 | `PORT` | `9817` | Server port |
 | `DETAIL_FETCH_CONCURRENCY` | `10` | Max concurrent profile detail requests |
 
@@ -65,7 +65,7 @@ Activates a filament profile on a printer tray.
 
 ```json
 {
-  "setting_id": "GFB99",
+  "tray_info_idx": "GFB99",
   "filament_id": "GFB99",
   "tray": 0,
   "color_hex": "FF0000"

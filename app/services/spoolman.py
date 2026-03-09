@@ -11,9 +11,8 @@ from app.models import SpoolmanFilament, SpoolmanSpool
 
 class SpoolmanClient:
     REQUIRED_EXTRA_FIELDS = [
-        ("bambu_filament_id", "Bambu Filament ID"),
-        ("bambu_setting_id", "Bambu Setting ID"),
-        ("bambu_filament_type", "Bambu Filament Type"),
+        ("ams_filament_id", "AMS Filament ID"),
+        ("ams_filament_type", "AMS Filament Type"),
     ]
 
     def __init__(self, base_url: str) -> None:
@@ -56,17 +55,15 @@ class SpoolmanClient:
     async def link_filament(
         self,
         filament_id: int,
-        bambu_filament_id: str,
-        bambu_setting_id: str,
-        bambu_filament_type: str,
+        ams_filament_id: str,
+        ams_filament_type: str,
     ) -> None:
         await self.ensure_extra_fields()
         await self._patch_filament(
             filament_id,
             {
-                "bambu_filament_id": self._json_encode(bambu_filament_id),
-                "bambu_setting_id": self._json_encode(bambu_setting_id),
-                "bambu_filament_type": self._json_encode(bambu_filament_type),
+                "ams_filament_id": self._json_encode(ams_filament_id),
+                "ams_filament_type": self._json_encode(ams_filament_type),
             },
         )
 
@@ -74,9 +71,8 @@ class SpoolmanClient:
         await self._patch_filament(
             filament_id,
             {
-                "bambu_filament_id": self._json_encode(""),
-                "bambu_setting_id": self._json_encode(""),
-                "bambu_filament_type": self._json_encode(""),
+                "ams_filament_id": self._json_encode(""),
+                "ams_filament_type": self._json_encode(""),
             },
         )
 

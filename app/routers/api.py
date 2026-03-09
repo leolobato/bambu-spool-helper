@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -44,25 +45,24 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
     orcaslicer = request.app.state.orcaslicer
     mqtt = request.app.state.mqtt
 
-    profile = orcaslicer.find_profile(payload.setting_id, payload.filament_id)
+    profile = orcaslicer.find_profile(payload.tray_info_idx, payload.filament_id)
     if not profile:
         return ActivateResponse(
             success=False,
             profile_name="",
             message=(
-                f"No profile found for setting_id={payload.setting_id}, "
+                f"No profile found for tray_info_idx={payload.tray_info_idx}, "
                 f"filament_id={payload.filament_id}"
             ),
         )
 
     success, mqtt_message = mqtt.activate_filament(
         tray=payload.tray,
-        tray_info_idx=profile.setting_id,
+        tray_info_idx=profile.tray_info_idx,
         color_hex=payload.color_hex,
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
         filament_type=profile.filament_type,
-        setting_id=profile.setting_id,
         bed_temp=profile.bed_temp_min,
         k=profile.k,
         n=profile.n,
@@ -107,3 +107,22 @@ async def reload_profiles(request: Request) -> dict[str, int | bool]:
         "success": True,
         "profiles_loaded": len(profiles),
     }
+
+
+@router.post("/import")
+async def import_profile(
+    request: Request,
+    payload: dict[str, Any],
+) -> dict[str, Any]:
+    try:
+        return await request.app.state.orcaslicer.import_profile(payload)
+    except httpx.HTTPStatusError as exc:
+        error_detail = exc.response.text.strip()
+        if not error_detail:
+            error_detail = str(exc)
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Failed to import profile: {error_detail}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Import request failed: {exc}") from exc

@@ -25,7 +25,7 @@
         <option value="" selected disabled>Select a spool...</option>
         {% for spool in spools %}
           <option value="{{ spool.id }}">
-            {{ spool.display_name }}{% if spool.filament.material %} ({{ spool.filament.material }}){% endif %}{% if spool.filament.bambu_setting_id %} | {{ spool.filament.bambu_setting_id }}{% endif %}{% if spool.remaining_weight is not none %} - {{ spool.remaining_weight|round|int }}g{% endif %}
+            {{ spool.display_name }}{% if spool.filament.material %} ({{ spool.filament.material }}){% endif %}{% if spool.filament.ams_filament_id %} | {{ spool.filament.ams_filament_id }}{% endif %}{% if spool.remaining_weight is not none %} - {{ spool.remaining_weight|round|int }}g{% endif %}
           </option>
         {% endfor %}
       </select>

@@ -128,8 +128,8 @@ Environment variables:
 
 Port of `SpoolmanService.swift` using `httpx.AsyncClient`:
 - `get_filaments()` → `GET /api/v1/filament`
-- `ensure_extra_fields()` → checks/creates `bambu_filament_id`, `bambu_setting_id`, `bambu_filament_type`
-- `link_filament(id, filament_id, setting_id, filament_type)` → `PATCH /api/v1/filament/{id}` with JSON-encoded extra fields
+- `ensure_extra_fields()` → checks/creates `ams_filament_id`, `ams_filament_type`
+- `link_filament(id, ams_filament_id, ams_filament_type)` → `PATCH /api/v1/filament/{id}` with JSON-encoded extra fields
 - `unlink_filament(id)` → same PATCH with empty values
 - **Critical detail**: values must be double-JSON-encoded (`json.dumps("GFL99")` → `'"GFL99"'`)
 

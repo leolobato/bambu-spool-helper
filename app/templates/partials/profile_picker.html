@@ -11,7 +11,7 @@
     hx-trigger="input changed delay:250ms from:#profile-search, submit"
   >
     <input type="hidden" name="filament_id" value="{{ filament_id }}" />
-    <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
+    <input type="hidden" name="selected_tray_info_idx" value="{{ selected_tray_info_idx }}" />
     <input
       id="profile-search"
       name="search"
@@ -29,10 +29,10 @@
       hx-target="#filament-detail"
     >
       <input type="hidden" name="profile_search" value="{{ profile_search }}" />
-      <select name="setting_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
+      <select name="tray_info_idx" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
         {% for profile in profiles %}
-          <option value="{{ profile.setting_id }}" {% if profile.setting_id == selected_setting_id %}selected{% endif %}>
-            {{ profile.name }} | {{ profile.filament_type }} | {{ profile.setting_id }}
+          <option value="{{ profile.tray_info_idx }}" {% if profile.tray_info_idx == selected_tray_info_idx %}selected{% endif %}>
+            {{ profile.name }} | {{ profile.filament_type }} | {{ profile.tray_info_idx }}
           </option>
         {% endfor %}
       </select>

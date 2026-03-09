@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from pathlib import Path
+from typing import Any
 
 import httpx
-from fastapi import APIRouter, Form, HTTPException, Query, Request
+from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
@@ -61,24 +63,17 @@ def _find_linked_profile(
     profiles: list[FilamentProfileResponse],
     filament: SpoolmanFilament,
 ) -> FilamentProfileResponse | None:
-    if filament.bambu_setting_id and filament.bambu_filament_id:
+    if filament.ams_filament_id:
         profile = next(
             (
                 profile
                 for profile in profiles
-                if profile.setting_id == filament.bambu_setting_id
-                and profile.filament_id == filament.bambu_filament_id
+                if profile.tray_info_idx == filament.ams_filament_id
             ),
             None,
         )
         if profile:
             return profile
-
-    if filament.bambu_filament_id:
-        return next(
-            (profile for profile in profiles if profile.filament_id == filament.bambu_filament_id),
-            None,
-        )
 
     return None
 
@@ -104,10 +99,30 @@ async def _render_filament_detail(
             "filament": filament,
             "profiles": filtered_profiles,
             "profile_search": profile_search,
-            "selected_setting_id": filament.bambu_setting_id or "",
+            "selected_tray_info_idx": filament.ams_filament_id or "",
             "linked_profile": linked_profile,
             "error": error,
         },
+    )
+
+
+def _render_import_profile_modal(
+    request: Request,
+    *,
+    error_message: str = "",
+    success_message: str = "",
+    import_result: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "partials/import_profile.html",
+        {
+            "request": request,
+            "error_message": error_message,
+            "success_message": success_message,
+            "import_result": import_result or {},
+        },
+        headers=headers,
     )
 
 
@@ -134,10 +149,74 @@ async def index(request: Request) -> HTMLResponse:
             "filament": selected_filament,
             "profiles": profiles,
             "profile_search": "",
-            "selected_setting_id": selected_filament.bambu_setting_id if selected_filament else "",
+            "selected_tray_info_idx": selected_filament.ams_filament_id if selected_filament else "",
             "linked_profile": linked_profile,
             "active_page": "filaments",
         },
+    )
+
+
+@router.get("/import-profile")
+async def import_profile_modal(request: Request) -> HTMLResponse:
+    return _render_import_profile_modal(request)
+
+
+@router.post("/import-profile")
+async def import_profile_upload(
+    request: Request,
+    profile_file: UploadFile = File(...),
+) -> HTMLResponse:
+    filename = profile_file.filename or ""
+    if not filename:
+        return _render_import_profile_modal(request, error_message="Please choose a JSON file.")
+    if not filename.lower().endswith(".json"):
+        return _render_import_profile_modal(request, error_message="Only .json profile files are supported.")
+
+    try:
+        raw = await profile_file.read()
+    finally:
+        await profile_file.close()
+
+    if not raw:
+        return _render_import_profile_modal(request, error_message="Uploaded file is empty.")
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except UnicodeDecodeError:
+        return _render_import_profile_modal(request, error_message="Profile file must be UTF-8 encoded JSON.")
+    except json.JSONDecodeError:
+        return _render_import_profile_modal(request, error_message="Invalid JSON file.")
+
+    if not isinstance(payload, dict):
+        return _render_import_profile_modal(
+            request,
+            error_message="Profile JSON must be an object.",
+        )
+
+    try:
+        result = await request.app.state.orcaslicer.import_profile(payload)
+    except httpx.HTTPStatusError as exc:
+        error_detail = exc.response.text.strip()
+        if not error_detail:
+            error_detail = str(exc)
+        return _render_import_profile_modal(
+            request,
+            error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
+        )
+    except httpx.HTTPError as exc:
+        return _render_import_profile_modal(
+            request,
+            error_message=f"Import request failed: {exc}",
+        )
+
+    tray_info_idx = str(result.get("tray_info_idx", "")).strip()
+    success_message = f"Imported profile {result.get('name', tray_info_idx or 'successfully')}."
+    headers = {"HX-Trigger": json.dumps({"profiles-imported": {"tray_info_idx": tray_info_idx}})}
+    return _render_import_profile_modal(
+        request,
+        success_message=success_message,
+        import_result=result,
+        headers=headers,
     )
 
 
@@ -178,20 +257,19 @@ async def filament_detail(
 async def link_filament(
     request: Request,
     filament_id: int,
-    setting_id: str = Form(...),
+    tray_info_idx: str = Form(...),
     profile_search: str = Form(default=""),
 ) -> HTMLResponse:
     profiles = request.app.state.orcaslicer.get_profiles()
-    profile = next((profile for profile in profiles if profile.setting_id == setting_id), None)
+    profile = next((profile for profile in profiles if profile.tray_info_idx == tray_info_idx), None)
     if profile is None:
-        raise HTTPException(status_code=400, detail="Invalid setting_id")
+        raise HTTPException(status_code=400, detail="Invalid tray_info_idx")
 
     try:
         await request.app.state.spoolman.link_filament(
             filament_id=filament_id,
-            bambu_filament_id=profile.filament_id,
-            bambu_setting_id=profile.setting_id,
-            bambu_filament_type=profile.filament_type,
+            ams_filament_id=profile.tray_info_idx,
+            ams_filament_type=profile.filament_type,
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to link filament: {exc}") from exc
@@ -221,7 +299,6 @@ def _build_tray_statuses(request: Request) -> list[TrayStatus]:
                 tray_type=td.tray_type,
                 tray_color=td.tray_color,
                 tray_info_idx=td.tray_info_idx,
-                setting_id=td.setting_id or td.tray_info_idx,
                 tray_sub_brands=td.tray_sub_brands,
                 tag_uid=td.tag_uid,
                 nozzle_temp_min=td.nozzle_temp_min,
@@ -372,9 +449,9 @@ async def assign_spool_to_tray(
     filament = spool.filament
     if not filament.is_linked:
         raise HTTPException(status_code=400, detail="Spool filament is not linked to a profile")
-    bambu_setting_id = (filament.bambu_setting_id or "").strip()
-    if not bambu_setting_id:
-        raise HTTPException(status_code=400, detail="Spool filament missing bambu_setting_id")
+    ams_filament_id = (filament.ams_filament_id or "").strip()
+    if not ams_filament_id:
+        raise HTTPException(status_code=400, detail="Spool filament missing ams_filament_id")
 
     tray_statuses = _build_tray_statuses(request)
     tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
@@ -382,19 +459,21 @@ async def assign_spool_to_tray(
         raise HTTPException(status_code=404, detail="Tray not found")
 
     profiles = request.app.state.orcaslicer.get_profiles()
-    profile = next((p for p in profiles if p.setting_id == bambu_setting_id), None)
+    profile = next((p for p in profiles if p.tray_info_idx == ams_filament_id), None)
     if not profile:
-        raise HTTPException(status_code=400, detail=f"OrcaSlicer profile not found for setting_id={bambu_setting_id}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"OrcaSlicer profile not found for tray_info_idx={ams_filament_id}",
+        )
 
     mqtt = request.app.state.mqtt
     success, message = mqtt.activate_filament(
         tray=tray_index,
-        tray_info_idx=profile.setting_id,
+        tray_info_idx=profile.tray_info_idx,
         color_hex=filament.color_hex or "FFFFFF",
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
         filament_type=profile.filament_type,
-        setting_id=profile.setting_id,
         tag_uid=tray.tag_uid or None,
         bed_temp=profile.bed_temp_min,
         tray_weight=tray.tray_weight if tray.tray_weight > 0 else None,
@@ -430,7 +509,7 @@ async def assign_spool_to_tray(
 async def profile_picker(
     request: Request,
     filament_id: int = Query(...),
-    selected_setting_id: str = Query(default=""),
+    selected_tray_info_idx: str = Query(default=""),
     search: str = Query(default=""),
 ) -> HTMLResponse:
     profiles = request.app.state.orcaslicer.get_profiles()
@@ -443,6 +522,6 @@ async def profile_picker(
             "filament_id": filament_id,
             "profiles": filtered_profiles,
             "profile_search": search,
-            "selected_setting_id": selected_setting_id,
+            "selected_tray_info_idx": selected_tray_info_idx,
         },
     )

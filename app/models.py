@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class FilamentProfileResponse(BaseModel):
     name: str
     filament_id: str
-    setting_id: str
+    tray_info_idx: str
     filament_type: str
     nozzle_temp_min: int
     nozzle_temp_max: int
@@ -35,7 +35,7 @@ class StatusResponse(BaseModel):
 
 
 class ActivateRequest(BaseModel):
-    setting_id: str
+    tray_info_idx: str
     filament_id: str
     tray: int = Field(ge=0, le=4)
     color_hex: str
@@ -60,7 +60,6 @@ class TrayStatus(BaseModel):
     tray_type: str = ""
     tray_color: str = ""
     tray_info_idx: str = ""
-    setting_id: str = ""
     tray_sub_brands: str = ""
     tag_uid: str = ""
     nozzle_temp_min: int = 0
@@ -136,20 +135,16 @@ class SpoolmanFilament(BaseModel):
             return raw or None
 
     @property
-    def bambu_filament_id(self) -> str | None:
-        return self._decode_extra_field("bambu_filament_id")
+    def ams_filament_id(self) -> str | None:
+        return self._decode_extra_field("ams_filament_id")
 
     @property
-    def bambu_setting_id(self) -> str | None:
-        return self._decode_extra_field("bambu_setting_id")
-
-    @property
-    def bambu_filament_type(self) -> str | None:
-        return self._decode_extra_field("bambu_filament_type")
+    def ams_filament_type(self) -> str | None:
+        return self._decode_extra_field("ams_filament_type")
 
     @property
     def is_linked(self) -> bool:
-        return bool(self.bambu_filament_id or self.bambu_setting_id)
+        return bool(self.ams_filament_id)
 
 
 class SpoolmanSpool(BaseModel):
