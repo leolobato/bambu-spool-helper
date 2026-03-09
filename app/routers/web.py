@@ -106,6 +106,111 @@ async def _load_filaments(request: Request) -> tuple[list[SpoolmanFilament], str
     return filaments, None
 
 
+def _find_filament_by_id(filaments: list[SpoolmanFilament], filament_id: int) -> SpoolmanFilament | None:
+    return next((item for item in filaments if item.id == filament_id), None)
+
+
+def _safe_int(value: Any) -> int | None:
+    try:
+        parsed = int(float(str(value).strip()))
+    except (TypeError, ValueError):
+        return None
+    if parsed < 0:
+        return None
+    return parsed
+
+
+def _decode_extra_range(extra: dict[str, str], key: str) -> tuple[int | None, int | None]:
+    raw = str(extra.get(key, "") or "").strip()
+    if not raw:
+        return None, None
+    try:
+        decoded = json.loads(raw)
+    except json.JSONDecodeError:
+        return None, None
+    if not isinstance(decoded, list) or len(decoded) < 2:
+        return None, None
+    return _safe_int(decoded[0]), _safe_int(decoded[1])
+
+
+def _suggest_profile_name(filament: SpoolmanFilament) -> str:
+    base = filament.display_name.strip() or f"Filament {filament.id}"
+    return f"{base} Imported"
+
+
+def _recommended_base_profile(
+    profiles: list[FilamentProfileResponse],
+    filament_type: str,
+) -> FilamentProfileResponse | None:
+    typed = [
+        profile for profile in profiles
+        if profile.setting_id.strip() and profile.filament_type.strip().casefold() == filament_type.strip().casefold()
+    ]
+    if typed:
+        typed.sort(key=lambda profile: ("generic" not in profile.name.casefold(), profile.name.casefold()))
+        return typed[0]
+
+    with_setting = [profile for profile in profiles if profile.setting_id.strip()]
+    if not with_setting:
+        return None
+    with_setting.sort(key=lambda profile: profile.name.casefold())
+    return with_setting[0]
+
+
+def _base_profile_options(profiles: list[FilamentProfileResponse]) -> list[dict[str, str]]:
+    options = [
+        {
+            "setting_id": profile.setting_id,
+            "name": profile.name,
+            "filament_type": profile.filament_type,
+        }
+        for profile in profiles
+        if profile.setting_id.strip()
+    ]
+    options.sort(key=lambda option: option["name"].casefold())
+    return options
+
+
+def _render_create_profile_modal(
+    request: Request,
+    *,
+    filament: SpoolmanFilament,
+    base_options: list[dict[str, str]],
+    selected_base_setting_id: str,
+    suggested_name: str,
+    filament_type: str,
+    nozzle_temp_min: int | None,
+    nozzle_temp_max: int | None,
+    bed_temp: int | None,
+    print_speed_min: int | None,
+    print_speed_max: int | None,
+    error_message: str = "",
+    success_message: str = "",
+    import_result: dict[str, Any] | None = None,
+    headers: dict[str, str] | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "partials/create_profile_from_filament.html",
+        {
+            "request": request,
+            "filament": filament,
+            "base_options": base_options,
+            "selected_base_setting_id": selected_base_setting_id,
+            "suggested_name": suggested_name,
+            "filament_type": filament_type,
+            "nozzle_temp_min": nozzle_temp_min,
+            "nozzle_temp_max": nozzle_temp_max,
+            "bed_temp": bed_temp,
+            "print_speed_min": print_speed_min,
+            "print_speed_max": print_speed_max,
+            "error_message": error_message,
+            "success_message": success_message,
+            "import_result": import_result or {},
+        },
+        headers=headers,
+    )
+
+
 def _find_linked_profile(
     profiles: list[FilamentProfileResponse],
     filament: SpoolmanFilament,
@@ -257,6 +362,187 @@ async def import_profile_upload(
         success_message=success_message,
         import_result=result,
         headers=headers,
+    )
+
+
+@router.get("/create-profile/{filament_id}")
+async def create_profile_modal(
+    request: Request,
+    filament_id: int,
+) -> HTMLResponse:
+    filaments, error = await _load_filaments(request)
+    if error:
+        raise HTTPException(status_code=502, detail=error)
+    filament = _find_filament_by_id(filaments, filament_id)
+    if filament is None:
+        raise HTTPException(status_code=404, detail="Filament not found")
+
+    profiles = request.app.state.orcaslicer.get_profiles()
+    base_options = _base_profile_options(profiles)
+    inferred_filament_type = (filament.ams_filament_type or filament.material or "").strip()
+    preferred_base = _recommended_base_profile(profiles, inferred_filament_type)
+    selected_base_setting_id = preferred_base.setting_id if preferred_base else ""
+    if not inferred_filament_type and preferred_base:
+        inferred_filament_type = preferred_base.filament_type
+
+    extra = filament.extra or {}
+    nozzle_min, nozzle_max = _decode_extra_range(extra, "nozzle_temp")
+    bed_min, bed_max = _decode_extra_range(extra, "bed_temp")
+    print_speed_min, print_speed_max = _decode_extra_range(extra, "printing_speed")
+    bed_temp = bed_min if bed_min is not None else bed_max
+
+    return _render_create_profile_modal(
+        request,
+        filament=filament,
+        base_options=base_options,
+        selected_base_setting_id=selected_base_setting_id,
+        suggested_name=_suggest_profile_name(filament),
+        filament_type=inferred_filament_type,
+        nozzle_temp_min=nozzle_min,
+        nozzle_temp_max=nozzle_max,
+        bed_temp=bed_temp,
+        print_speed_min=print_speed_min,
+        print_speed_max=print_speed_max,
+    )
+
+
+@router.post("/create-profile/{filament_id}")
+async def create_profile_submit(
+    request: Request,
+    filament_id: int,
+    profile_name: str = Form(...),
+    base_setting_id: str = Form(...),
+    filament_type: str = Form(...),
+    nozzle_temp_min: str = Form(default=""),
+    nozzle_temp_max: str = Form(default=""),
+    bed_temp: str = Form(default=""),
+    print_speed_min: str = Form(default=""),
+    print_speed_max: str = Form(default=""),
+) -> HTMLResponse:
+    filaments, error = await _load_filaments(request)
+    if error:
+        raise HTTPException(status_code=502, detail=error)
+    filament = _find_filament_by_id(filaments, filament_id)
+    if filament is None:
+        raise HTTPException(status_code=404, detail="Filament not found")
+
+    profiles = request.app.state.orcaslicer.get_profiles()
+    base_options = _base_profile_options(profiles)
+    base_option_ids = {option["setting_id"] for option in base_options}
+
+    clean_name = profile_name.strip()
+    clean_base = base_setting_id.strip()
+    clean_type = filament_type.strip()
+
+    nozzle_min = _safe_int(nozzle_temp_min)
+    nozzle_max = _safe_int(nozzle_temp_max)
+    bed = _safe_int(bed_temp)
+    speed_min = _safe_int(print_speed_min)
+    speed_max = _safe_int(print_speed_max)
+
+    error_message = ""
+    if not clean_name:
+        error_message = "Profile name is required."
+    elif not clean_base:
+        error_message = "Base filament profile is required."
+    elif clean_base not in base_option_ids:
+        error_message = "Selected base filament profile is invalid."
+    elif not clean_type:
+        error_message = "Filament type is required."
+    elif (nozzle_min is None) != (nozzle_max is None):
+        error_message = "Provide both nozzle min and max temperatures, or leave both empty."
+    elif (speed_min is None) != (speed_max is None):
+        error_message = "Provide both print speed min and max, or leave both empty."
+
+    if error_message:
+        return _render_create_profile_modal(
+            request,
+            filament=filament,
+            base_options=base_options,
+            selected_base_setting_id=clean_base,
+            suggested_name=clean_name,
+            filament_type=clean_type,
+            nozzle_temp_min=nozzle_min,
+            nozzle_temp_max=nozzle_max,
+            bed_temp=bed,
+            print_speed_min=speed_min,
+            print_speed_max=speed_max,
+            error_message=error_message,
+        )
+
+    payload: dict[str, Any] = {
+        "name": clean_name,
+        "inherits": clean_base,
+        "filament_type": [clean_type],
+    }
+
+    if nozzle_min is not None and nozzle_max is not None:
+        low, high = sorted((nozzle_min, nozzle_max))
+        payload["nozzle_temperature_range_low"] = [low]
+        payload["nozzle_temperature_range_high"] = [high]
+
+    if bed is not None:
+        payload["hot_plate_temp"] = [bed]
+
+    if speed_min is not None and speed_max is not None:
+        low, high = sorted((speed_min, speed_max))
+        payload["slow_down_min_speed"] = [low]
+        payload["filament_max_volumetric_speed"] = [high]
+
+    try:
+        result = await request.app.state.orcaslicer.import_profile(payload)
+    except httpx.HTTPStatusError as exc:
+        error_detail = exc.response.text.strip() or str(exc)
+        return _render_create_profile_modal(
+            request,
+            filament=filament,
+            base_options=base_options,
+            selected_base_setting_id=clean_base,
+            suggested_name=clean_name,
+            filament_type=clean_type,
+            nozzle_temp_min=nozzle_min,
+            nozzle_temp_max=nozzle_max,
+            bed_temp=bed,
+            print_speed_min=speed_min,
+            print_speed_max=speed_max,
+            error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
+        )
+    except httpx.HTTPError as exc:
+        return _render_create_profile_modal(
+            request,
+            filament=filament,
+            base_options=base_options,
+            selected_base_setting_id=clean_base,
+            suggested_name=clean_name,
+            filament_type=clean_type,
+            nozzle_temp_min=nozzle_min,
+            nozzle_temp_max=nozzle_max,
+            bed_temp=bed,
+            print_speed_min=speed_min,
+            print_speed_max=speed_max,
+            error_message=f"Import request failed: {exc}",
+        )
+
+    success_headers = {"HX-Trigger": json.dumps({"profiles-imported": True})}
+    imported_name = str(result.get("name", "")).strip()
+    imported_filament_id = str(result.get("filament_id", "")).strip()
+    success_message = f"Imported profile {imported_name or imported_filament_id or 'successfully'}."
+
+    return _render_create_profile_modal(
+        request,
+        filament=filament,
+        base_options=base_options,
+        selected_base_setting_id=clean_base,
+        suggested_name=clean_name,
+        filament_type=clean_type,
+        nozzle_temp_min=nozzle_min,
+        nozzle_temp_max=nozzle_max,
+        bed_temp=bed,
+        print_speed_min=speed_min,
+        print_speed_max=speed_max,
+        success_message=success_message,
+        import_result=result,
+        headers=success_headers,
     )
 
 

@@ -1,0 +1,204 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
+  onclick="closeModal()"
+>
+  <div
+    class="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+    onclick="event.stopPropagation()"
+  >
+    {% if success_message %}
+      <h2 class="text-lg font-semibold">Create Profile from Spoolman Fields</h2>
+      <div class="mt-3 rounded-md border border-emerald-700/60 bg-emerald-900/30 p-3 text-sm text-emerald-100">
+        {{ success_message }}
+      </div>
+      {% if import_result %}
+        <dl class="mt-3 space-y-1 text-sm text-slate-200">
+          <div class="flex gap-2">
+            <dt class="w-32 text-slate-400">Name</dt>
+            <dd>{{ import_result.get("name", "-") }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-32 text-slate-400">Type</dt>
+            <dd>{{ import_result.get("filament_type", "-") }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-32 text-slate-400">Filament ID</dt>
+            <dd class="font-mono">{{ import_result.get("filament_id", "-") }}</dd>
+          </div>
+        </dl>
+      {% endif %}
+      <div class="mt-5 flex justify-end">
+        <button
+          type="button"
+          class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+          onclick="closeModal()"
+        >
+          Close
+        </button>
+      </div>
+    {% else %}
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Create Profile from Spoolman Fields</h2>
+          <p class="mt-1 text-xs text-slate-400">
+            Base profile is inherited from Orca. Values below are prefilled from Spoolman fields.
+          </p>
+        </div>
+        <button
+          type="button"
+          class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+          onclick="closeModal()"
+        >
+          Close
+        </button>
+      </div>
+
+      <div class="mt-3 rounded-md border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-300">
+        <div><span class="text-slate-400">Spoolman filament:</span> {{ filament.display_name }}</div>
+        <div class="mt-1"><span class="text-slate-400">Source fields:</span> <span class="font-mono">ams_filament_type, nozzle_temp, bed_temp, printing_speed</span></div>
+      </div>
+
+      {% if error_message %}
+        <div class="mt-3 rounded-md border border-rose-700/60 bg-rose-900/30 p-2 text-sm text-rose-100">
+          {{ error_message }}
+        </div>
+      {% endif %}
+
+      {% if base_options %}
+      <form
+        class="mt-4 space-y-4"
+        hx-post="/web/create-profile/{{ filament.id }}"
+        hx-target="#modal"
+        hx-swap="innerHTML"
+      >
+        <div class="grid gap-3 md:grid-cols-2">
+          <div>
+            <label for="profile-name" class="mb-1 block text-xs text-slate-300">Profile name</label>
+            <input
+              id="profile-name"
+              name="profile_name"
+              type="text"
+              value="{{ suggested_name }}"
+              required
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            />
+          </div>
+          <div>
+            <label for="base-setting-id" class="mb-1 block text-xs text-slate-300">Base filament profile</label>
+            <select
+              id="base-setting-id"
+              name="base_setting_id"
+              required
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            >
+              {% for option in base_options %}
+                <option value="{{ option.setting_id }}" {% if option.setting_id == selected_base_setting_id %}selected{% endif %}>
+                  {{ option.name }} | {{ option.filament_type }} | {{ option.setting_id }}
+                </option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="filament-type" class="mb-1 block text-xs text-slate-300">Filament type</label>
+            <input
+              id="filament-type"
+              name="filament_type"
+              type="text"
+              value="{{ filament_type }}"
+              required
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            />
+          </div>
+        </div>
+
+        <div class="grid gap-3 md:grid-cols-3">
+          <div>
+            <label for="nozzle-temp-min" class="mb-1 block text-xs text-slate-300">Nozzle temp min</label>
+            <input
+              id="nozzle-temp-min"
+              name="nozzle_temp_min"
+              type="number"
+              min="0"
+              value="{{ nozzle_temp_min if nozzle_temp_min is not none else '' }}"
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            />
+          </div>
+          <div>
+            <label for="nozzle-temp-max" class="mb-1 block text-xs text-slate-300">Nozzle temp max</label>
+            <input
+              id="nozzle-temp-max"
+              name="nozzle_temp_max"
+              type="number"
+              min="0"
+              value="{{ nozzle_temp_max if nozzle_temp_max is not none else '' }}"
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            />
+          </div>
+          <div>
+            <label for="bed-temp" class="mb-1 block text-xs text-slate-300">Bed temp</label>
+            <input
+              id="bed-temp"
+              name="bed_temp"
+              type="number"
+              min="0"
+              value="{{ bed_temp if bed_temp is not none else '' }}"
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            />
+          </div>
+          <div>
+            <label for="print-speed-min" class="mb-1 block text-xs text-slate-300">Print speed min</label>
+            <input
+              id="print-speed-min"
+              name="print_speed_min"
+              type="number"
+              min="0"
+              value="{{ print_speed_min if print_speed_min is not none else '' }}"
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            />
+          </div>
+          <div>
+            <label for="print-speed-max" class="mb-1 block text-xs text-slate-300">Print speed max</label>
+            <input
+              id="print-speed-max"
+              name="print_speed_max"
+              type="number"
+              min="0"
+              value="{{ print_speed_max if print_speed_max is not none else '' }}"
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+            />
+          </div>
+        </div>
+
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            onclick="closeModal()"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+          >
+            Import Profile
+          </button>
+        </div>
+      </form>
+      {% else %}
+        <div class="mt-4 rounded-md border border-amber-700/60 bg-amber-900/20 p-3 text-sm text-amber-100">
+          No base filament profiles are currently loaded. Reload Orca profiles and try again.
+        </div>
+        <div class="mt-4 flex justify-end">
+          <button
+            type="button"
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            onclick="closeModal()"
+          >
+            Close
+          </button>
+        </div>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>

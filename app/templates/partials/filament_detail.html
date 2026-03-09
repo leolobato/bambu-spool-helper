@@ -23,6 +23,15 @@
       </div>
     </div>
 
+    <button
+      class="mt-4 rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+      hx-get="/web/create-profile/{{ filament.id }}"
+      hx-target="#modal"
+      hx-swap="innerHTML"
+    >
+      Create Orca Profile from Spoolman Fields
+    </button>
+
     {% if filament.is_linked %}
       <div class="mt-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm">
         <div class="font-medium text-emerald-200">Linked Filament Mapping</div>
