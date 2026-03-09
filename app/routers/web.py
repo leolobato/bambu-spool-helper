@@ -63,6 +63,21 @@ def _find_profile_by_linked_id(
     )
 
 
+def _build_tray_profile_matches(
+    trays: list[TrayStatus],
+    profiles: list[FilamentProfileResponse],
+) -> dict[int, FilamentProfileResponse]:
+    matches: dict[int, FilamentProfileResponse] = {}
+    for tray in trays:
+        tray_filament_id = (tray.tray_info_idx or "").strip()
+        if not tray_filament_id:
+            continue
+        profile = _find_profile_by_linked_id(profiles, tray_filament_id)
+        if profile:
+            matches[tray.tray_index] = profile
+    return matches
+
+
 def _filter_filaments(filaments: list[SpoolmanFilament], filter_mode: str, search: str) -> list[SpoolmanFilament]:
     filtered = filaments
     if filter_mode == "linked":
@@ -417,10 +432,13 @@ async def _build_trays_context(request: Request) -> dict:
     tray_statuses = _build_tray_statuses(request)
     spools, error = await _load_spools(request)
     linked_spools = [s for s in spools if s.filament.is_linked]
+    profiles = request.app.state.orcaslicer.get_profiles()
+    tray_profile_matches = _build_tray_profile_matches(tray_statuses, profiles)
 
     return {
         "request": request,
         "trays": tray_statuses,
+        "tray_profile_matches": tray_profile_matches,
         "spools": linked_spools,
         "error": error,
         "mqtt_status": _build_mqtt_status(request),
@@ -540,6 +558,7 @@ async def assign_spool_to_tray(
         {
             "request": request,
             "tray": tray,
+            "matched_profile": _find_profile_by_linked_id(profiles, tray.tray_info_idx),
             "spools": linked_spools,
             "assign_success": f"Assigned {spool.display_name} to {tray.label}",
         },

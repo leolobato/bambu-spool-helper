@@ -27,6 +27,20 @@
     </div>
   {% endif %}
 
+  {% if not tray.is_empty and tray.tray_info_idx %}
+    {% if matched_profile %}
+      <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-2 text-xs text-emerald-200">
+        <div class="font-medium">Matched Orca Profile</div>
+        <div class="mt-1 text-emerald-100">{{ matched_profile.name }}</div>
+        <div class="mt-1 text-emerald-200/80">{{ matched_profile.filament_type }} | filament_id={{ matched_profile.filament_id }}</div>
+      </div>
+    {% else %}
+      <div class="rounded-md border border-amber-700/60 bg-amber-900/20 p-2 text-xs text-amber-200">
+        No profile matches filament_id={{ tray.tray_info_idx }}.
+      </div>
+    {% endif %}
+  {% endif %}
+
   {% if assign_success is defined and assign_success %}
     <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-2 text-xs text-emerald-200">{{ assign_success }}</div>
   {% endif %}

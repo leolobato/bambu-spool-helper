@@ -22,6 +22,7 @@
 <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
   {% for tray in trays %}
     <div id="tray-card-{{ tray.tray_index }}">
+      {% set matched_profile = tray_profile_matches.get(tray.tray_index) if tray_profile_matches is defined else None %}
       {% include "partials/tray_card.html" %}
     </div>
   {% endfor %}
