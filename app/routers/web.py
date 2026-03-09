@@ -53,6 +53,47 @@ def _filter_profiles(profiles: list[FilamentProfileResponse], search: str) -> li
     ]
 
 
+def _normalize_profile_id(value: str) -> str:
+    return str(value or "").strip().upper()
+
+
+def _profile_ids_match(left: str, right: str) -> bool:
+    left_norm = _normalize_profile_id(left)
+    right_norm = _normalize_profile_id(right)
+    if not left_norm or not right_norm:
+        return False
+    if left_norm == right_norm:
+        return True
+    if left_norm.startswith("O") and left_norm[1:] == right_norm:
+        return True
+    if right_norm.startswith("O") and right_norm[1:] == left_norm:
+        return True
+    return False
+
+
+def _find_profile_by_linked_id(
+    profiles: list[FilamentProfileResponse],
+    linked_id: str,
+) -> FilamentProfileResponse | None:
+    linked_id = str(linked_id or "").strip()
+    if not linked_id:
+        return None
+
+    # Primary: linked id is Orca filament_id.
+    profile = next(
+        (profile for profile in profiles if _profile_ids_match(profile.filament_id, linked_id)),
+        None,
+    )
+    if profile:
+        return profile
+
+    # Backward compatibility: older links stored tray_info_idx.
+    return next(
+        (profile for profile in profiles if _profile_ids_match(profile.tray_info_idx, linked_id)),
+        None,
+    )
+
+
 def _filter_filaments(filaments: list[SpoolmanFilament], filter_mode: str, search: str) -> list[SpoolmanFilament]:
     filtered = filaments
     if filter_mode == "linked":
@@ -85,19 +126,7 @@ def _find_linked_profile(
     profiles: list[FilamentProfileResponse],
     filament: SpoolmanFilament,
 ) -> FilamentProfileResponse | None:
-    if filament.ams_filament_id:
-        profile = next(
-            (
-                profile
-                for profile in profiles
-                if profile.tray_info_idx == filament.ams_filament_id
-            ),
-            None,
-        )
-        if profile:
-            return profile
-
-    return None
+    return _find_profile_by_linked_id(profiles, filament.ams_filament_id or "")
 
 
 async def _render_filament_detail(
@@ -121,7 +150,9 @@ async def _render_filament_detail(
             "filament": filament,
             "profiles": filtered_profiles,
             "profile_search": profile_search,
-            "selected_tray_info_idx": filament.ams_filament_id or "",
+            "selected_linked_filament_id": (
+                linked_profile.filament_id if linked_profile else (filament.ams_filament_id or "")
+            ),
             "linked_profile": linked_profile,
             "error": error,
         },
@@ -171,7 +202,9 @@ async def index(request: Request) -> HTMLResponse:
             "filament": selected_filament,
             "profiles": profiles,
             "profile_search": "",
-            "selected_tray_info_idx": selected_filament.ams_filament_id if selected_filament else "",
+            "selected_linked_filament_id": (
+                linked_profile.filament_id if linked_profile else (selected_filament.ams_filament_id if selected_filament else "")
+            ),
             "linked_profile": linked_profile,
             "active_page": "filaments",
         },
@@ -279,18 +312,20 @@ async def filament_detail(
 async def link_filament(
     request: Request,
     filament_id: int,
-    tray_info_idx: str = Form(...),
+    linked_filament_id: str = Form(...),
     profile_search: str = Form(default=""),
 ) -> HTMLResponse:
     profiles = request.app.state.orcaslicer.get_profiles()
-    profile = next((profile for profile in profiles if profile.tray_info_idx == tray_info_idx), None)
+    profile = _find_profile_by_linked_id(profiles, linked_filament_id)
     if profile is None:
-        raise HTTPException(status_code=400, detail="Invalid tray_info_idx")
+        raise HTTPException(status_code=400, detail="Invalid filament_id")
+    if not profile.filament_id:
+        raise HTTPException(status_code=400, detail="Selected profile has no filament_id")
 
     try:
         await request.app.state.spoolman.link_filament(
             filament_id=filament_id,
-            ams_filament_id=profile.tray_info_idx,
+            ams_filament_id=profile.filament_id,
             ams_filament_type=profile.filament_type,
         )
     except httpx.HTTPError as exc:
@@ -482,8 +517,8 @@ async def assign_spool_to_tray(
     filament = spool.filament
     if not filament.is_linked:
         raise HTTPException(status_code=400, detail="Spool filament is not linked to a profile")
-    ams_filament_id = (filament.ams_filament_id or "").strip()
-    if not ams_filament_id:
+    linked_filament_id = (filament.ams_filament_id or "").strip()
+    if not linked_filament_id:
         raise HTTPException(status_code=400, detail="Spool filament missing ams_filament_id")
 
     tray_statuses = _build_tray_statuses(request)
@@ -492,17 +527,20 @@ async def assign_spool_to_tray(
         raise HTTPException(status_code=404, detail="Tray not found")
 
     profiles = request.app.state.orcaslicer.get_profiles()
-    profile = next((p for p in profiles if p.tray_info_idx == ams_filament_id), None)
+    profile = _find_profile_by_linked_id(profiles, linked_filament_id)
     if not profile:
         raise HTTPException(
             status_code=400,
-            detail=f"OrcaSlicer profile not found for tray_info_idx={ams_filament_id}",
+            detail=f"OrcaSlicer profile not found for filament_id={linked_filament_id}",
         )
+    tray_info_idx = (profile.filament_id or "").strip()
+    if not tray_info_idx:
+        raise HTTPException(status_code=400, detail="Linked profile missing filament_id")
 
     mqtt = request.app.state.mqtt
     success, message = mqtt.activate_filament(
         tray=tray_index,
-        tray_info_idx=profile.tray_info_idx,
+        tray_info_idx=tray_info_idx,
         color_hex=filament.color_hex or "FFFFFF",
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
@@ -542,11 +580,15 @@ async def assign_spool_to_tray(
 async def profile_picker(
     request: Request,
     filament_id: int = Query(...),
-    selected_tray_info_idx: str = Query(default=""),
+    selected_linked_filament_id: str = Query(default=""),
     search: str = Query(default=""),
 ) -> HTMLResponse:
     profiles = request.app.state.orcaslicer.get_profiles()
     filtered_profiles = _filter_profiles(profiles, search)
+    selected_profile = _find_profile_by_linked_id(profiles, selected_linked_filament_id)
+    selected_linked_filament_id_canonical = (
+        selected_profile.filament_id if selected_profile else selected_linked_filament_id
+    )
 
     return templates.TemplateResponse(
         "partials/profile_picker.html",
@@ -555,6 +597,6 @@ async def profile_picker(
             "filament_id": filament_id,
             "profiles": filtered_profiles,
             "profile_search": search,
-            "selected_tray_info_idx": selected_tray_info_idx,
+            "selected_linked_filament_id": selected_linked_filament_id_canonical,
         },
     )

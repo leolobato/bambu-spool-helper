@@ -71,9 +71,9 @@
         }
 
         const params = new URLSearchParams({ filament_id: filamentInput.value });
-        const selectedInput = picker.querySelector("input[name='selected_tray_info_idx']");
+        const selectedInput = picker.querySelector("input[name='selected_linked_filament_id']");
         if (selectedInput && selectedInput.value) {
-          params.set("selected_tray_info_idx", selectedInput.value);
+          params.set("selected_linked_filament_id", selectedInput.value);
         }
 
         const searchInput = picker.querySelector("#profile-search");

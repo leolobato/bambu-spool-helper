@@ -23,15 +23,17 @@
       </div>
     </div>
 
-    {% if linked_profile %}
-      <div class="mt-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm">
-        <div class="font-medium text-emerald-200">Linked Profile</div>
-        <div class="mt-1 text-emerald-100">{{ linked_profile.name }}</div>
-        <div class="mt-1 text-xs text-emerald-200/80">{{ linked_profile.filament_type }} | {{ linked_profile.tray_info_idx }} | {{ linked_profile.filament_id }}</div>
-      </div>
-    {% endif %}
-
     {% if filament.is_linked %}
+      <div class="mt-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm">
+        <div class="font-medium text-emerald-200">Linked Filament Mapping</div>
+        <div class="mt-1 text-xs text-emerald-200/80">filament_id: {{ filament.ams_filament_id }}</div>
+        {% if linked_profile %}
+          <div class="mt-1 text-emerald-100">{{ linked_profile.name }}</div>
+          <div class="mt-1 text-xs text-emerald-200/80">{{ linked_profile.filament_type }} | tray_info_idx={{ linked_profile.tray_info_idx }} | filament_id={{ linked_profile.filament_id }}</div>
+        {% else %}
+          <div class="mt-1 text-amber-200">No Orca profile currently matches this filament_id.</div>
+        {% endif %}
+      </div>
       <button
         class="mt-4 rounded-md border border-rose-700 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-900/30"
         hx-post="/web/unlink/{{ filament.id }}"
