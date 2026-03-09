@@ -33,7 +33,10 @@ class OrcaSlicerClient:
     async def load_profiles(self) -> list[FilamentProfileResponse]:
         response = await self._client.get(
             "/profiles/filaments",
-            params={"machine": self._machine_id},
+            params={
+                "machine": self._machine_id,
+                "ams_assignable": "true",
+            },
         )
         response.raise_for_status()
         summary_profiles = response.json()
