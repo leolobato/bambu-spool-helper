@@ -42,8 +42,9 @@ async def lifespan(app: FastAPI):
     app.state.recent_activations: list[ActivationRecord] = []
 
     try:
+        machines = await orcaslicer.load_machines()
         loaded = await orcaslicer.load_profiles()
-        logger.info("Loaded %d filament profiles", len(loaded))
+        logger.info("Loaded %d machines and %d filament profiles for %s", len(machines), len(loaded), settings.default_machine_profile_id)
     except Exception:
         logger.exception("Failed to load profiles from OrcaSlicer during startup")
 

@@ -11,6 +11,7 @@
     hx-trigger="input changed delay:250ms, search, submit"
   >
     <input type="hidden" name="filament_id" value="{{ filament_id }}" />
+    <input type="hidden" name="machine" value="{{ machine_id }}" />
     <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
     <input type="hidden" name="selected_linked_filament_id" value="{{ selected_linked_filament_id }}" />
     <input
@@ -29,6 +30,7 @@
       hx-post="/web/link/{{ filament_id }}"
       hx-target="#filament-detail"
     >
+      <input type="hidden" name="machine" value="{{ machine_id }}" />
       <input type="hidden" name="profile_search" value="{{ profile_search }}" />
       <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
       <select name="linked_filament_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">

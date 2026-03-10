@@ -19,7 +19,7 @@ TRAY_LABELS = ["Tray 1", "Tray 2", "Tray 3", "Tray 4", "Ext"]
 @router.get("/status", response_model=StatusResponse)
 async def get_status(request: Request) -> StatusResponse:
     settings = request.app.state.settings
-    profile_count = len(request.app.state.orcaslicer.get_profiles())
+    profile_count = len(await request.app.state.orcaslicer.get_profiles(settings.default_machine_profile_id))
     return StatusResponse(port=settings.port, profiles_loaded=profile_count)
 
 
@@ -31,9 +31,10 @@ async def get_valid_tray_types() -> list[str]:
 @router.get("/profiles", response_model=list[FilamentProfileResponse])
 async def get_profiles(
     request: Request,
+    machine: str | None = Query(default=None),
     search: str | None = Query(default=None),
 ) -> list[FilamentProfileResponse]:
-    profiles = request.app.state.orcaslicer.get_profiles()
+    profiles = await request.app.state.orcaslicer.get_profiles(machine)
     term = (search or "").strip().lower()
     if not term:
         return profiles
@@ -98,9 +99,12 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
 
 
 @router.post("/reload")
-async def reload_profiles(request: Request) -> dict[str, int | bool]:
+async def reload_profiles(
+    request: Request,
+    machine: str | None = Query(default=None),
+) -> dict[str, int | bool]:
     try:
-        profiles = await request.app.state.orcaslicer.load_profiles()
+        profiles = await request.app.state.orcaslicer.load_profiles(machine)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to reload profiles: {exc}") from exc
 
@@ -114,9 +118,10 @@ async def reload_profiles(request: Request) -> dict[str, int | bool]:
 async def import_profile(
     request: Request,
     payload: dict[str, Any],
+    machine: str | None = Query(default=None),
 ) -> dict[str, Any]:
     try:
-        return await request.app.state.orcaslicer.import_profile(payload)
+        return await request.app.state.orcaslicer.import_profile(payload, machine)
     except httpx.HTTPStatusError as exc:
         error_detail = exc.response.text.strip()
         if not error_detail:

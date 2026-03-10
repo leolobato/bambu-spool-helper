@@ -5,6 +5,7 @@
     hx-target="#tray-detail-{{ tray.tray_index }}"
     hx-trigger="input changed delay:250ms from:find input[type=search], submit"
   >
+    <input type="hidden" name="machine" value="{{ machine_id }}" />
     <input
       name="search"
       type="search"
@@ -21,6 +22,7 @@
       hx-swap="innerHTML"
       class="space-y-2"
     >
+      <input type="hidden" name="machine" value="{{ machine_id }}" />
       <select name="spool_id" required class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
         <option value="" selected disabled>Select a spool...</option>
         {% for spool in spools %}

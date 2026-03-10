@@ -13,7 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Upload
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.models import FilamentProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
+from app.models import FilamentProfileResponse, MachineProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +108,17 @@ def _find_profiles_by_linked_id(
     ]
 
 
+def _score_linked_profile_match(
+    profile: FilamentProfileResponse,
+    filament: SpoolmanFilament,
+) -> tuple[int, int, int]:
+    return (
+        1 if _values_match(profile.filament_type, filament.material or "") else 0,
+        1 if _values_match(profile.filament_type, filament.ams_filament_type or "") else 0,
+        1 if profile.source == "user" else 0,
+    )
+
+
 def _infer_filament_type_from_name(name: str) -> str:
     normalized_name = str(name or "").upper()
     if not normalized_name:
@@ -190,11 +201,42 @@ def _find_linked_profile(
     profiles: list[FilamentProfileResponse],
     filament: SpoolmanFilament,
 ) -> FilamentProfileResponse | None:
-    if filament.ams_setting_id:
-        profile = _find_profile_by_setting_id(profiles, filament.ams_setting_id)
-        if profile is not None:
-            return profile
-    return _find_profile_by_linked_id(profiles, filament.ams_filament_id or "")
+    candidates = _find_profiles_by_linked_id(profiles, filament.ams_filament_id or "")
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+    ranked_candidates = sorted(
+        candidates,
+        key=lambda profile: (
+            _score_linked_profile_match(profile, filament),
+            profile.name.casefold(),
+        ),
+        reverse=True,
+    )
+    return ranked_candidates[0]
+
+
+async def _machine_context(
+    request: Request,
+    requested_machine_id: str = "",
+) -> tuple[list[MachineProfileResponse], str]:
+    orcaslicer = request.app.state.orcaslicer
+    machines = orcaslicer.get_machines()
+    if not machines:
+        machines = await orcaslicer.load_machines()
+
+    selected_machine_id = str(requested_machine_id or "").strip()
+    if selected_machine_id and orcaslicer.has_machine(selected_machine_id):
+        return machines, selected_machine_id
+
+    if orcaslicer.default_machine_id and orcaslicer.has_machine(orcaslicer.default_machine_id):
+        return machines, orcaslicer.default_machine_id
+
+    if machines:
+        return machines, machines[0].setting_id
+
+    return [], orcaslicer.default_machine_id
 
 
 def _build_tray_profile_matches(
@@ -309,6 +351,7 @@ def _render_create_profile_modal(
     request: Request,
     *,
     filament: SpoolmanFilament,
+    machine_id: str,
     base_options: list[dict[str, str]],
     selected_base_setting_id: str,
     suggested_name: str,
@@ -328,6 +371,7 @@ def _render_create_profile_modal(
         {
             "request": request,
             "filament": filament,
+            "machine_id": machine_id,
             "base_options": base_options,
             "selected_base_setting_id": selected_base_setting_id,
             "suggested_name": suggested_name,
@@ -347,6 +391,7 @@ def _render_create_profile_modal(
 async def _render_filament_detail(
     request: Request,
     filament_id: int,
+    machine_id: str,
     profile_search: str = "",
 ) -> HTMLResponse:
     filaments, error = await _load_filaments(request)
@@ -354,7 +399,7 @@ async def _render_filament_detail(
     if filament is None:
         raise HTTPException(status_code=404, detail="Filament not found")
 
-    profiles = request.app.state.orcaslicer.get_profiles()
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     linked_profile = _find_linked_profile(profiles, filament)
     filtered_profiles = _filter_profiles(profiles, profile_search)
 
@@ -363,6 +408,7 @@ async def _render_filament_detail(
         {
             "request": request,
             "filament": filament,
+            "machine_id": machine_id,
             "profiles": filtered_profiles,
             "profile_search": profile_search,
             "selected_setting_id": linked_profile.setting_id if linked_profile else "",
@@ -378,6 +424,7 @@ async def _render_filament_detail(
 def _render_import_profile_modal(
     request: Request,
     *,
+    machine_id: str = "",
     error_message: str = "",
     success_message: str = "",
     import_result: dict[str, Any] | None = None,
@@ -387,6 +434,7 @@ def _render_import_profile_modal(
         "partials/import_profile.html",
         {
             "request": request,
+            "machine_id": machine_id,
             "error_message": error_message,
             "success_message": success_message,
             "import_result": import_result or {},
@@ -396,9 +444,13 @@ def _render_import_profile_modal(
 
 
 @router.get("/")
-async def index(request: Request) -> HTMLResponse:
+async def index(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
     filaments, error = await _load_filaments(request)
-    profiles = request.app.state.orcaslicer.get_profiles()
+    machine_options, machine_id = await _machine_context(request, machine)
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     filter_mode = "all"
     search = ""
     filtered_filaments = _filter_filaments(filaments, filter_mode, search)
@@ -410,6 +462,8 @@ async def index(request: Request) -> HTMLResponse:
         "index.html",
         {
             "request": request,
+            "machine_options": machine_options,
+            "machine_id": machine_id,
             "filaments": filtered_filaments,
             "error": error,
             "filter_mode": filter_mode,
@@ -429,20 +483,26 @@ async def index(request: Request) -> HTMLResponse:
 
 
 @router.get("/import-profile")
-async def import_profile_modal(request: Request) -> HTMLResponse:
-    return _render_import_profile_modal(request)
+async def import_profile_modal(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
+    _, machine_id = await _machine_context(request, machine)
+    return _render_import_profile_modal(request, machine_id=machine_id)
 
 
 @router.post("/import-profile")
 async def import_profile_upload(
     request: Request,
     profile_file: UploadFile = File(...),
+    machine: str = Form(default=""),
 ) -> HTMLResponse:
+    _, machine_id = await _machine_context(request, machine)
     filename = profile_file.filename or ""
     if not filename:
-        return _render_import_profile_modal(request, error_message="Please choose a JSON file.")
+        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Please choose a JSON file.")
     if not filename.lower().endswith(".json"):
-        return _render_import_profile_modal(request, error_message="Only .json profile files are supported.")
+        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Only .json profile files are supported.")
 
     try:
         raw = await profile_file.read()
@@ -450,34 +510,37 @@ async def import_profile_upload(
         await profile_file.close()
 
     if not raw:
-        return _render_import_profile_modal(request, error_message="Uploaded file is empty.")
+        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Uploaded file is empty.")
 
     try:
         payload = json.loads(raw.decode("utf-8"))
     except UnicodeDecodeError:
-        return _render_import_profile_modal(request, error_message="Profile file must be UTF-8 encoded JSON.")
+        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Profile file must be UTF-8 encoded JSON.")
     except json.JSONDecodeError:
-        return _render_import_profile_modal(request, error_message="Invalid JSON file.")
+        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Invalid JSON file.")
 
     if not isinstance(payload, dict):
         return _render_import_profile_modal(
             request,
+            machine_id=machine_id,
             error_message="Profile JSON must be an object.",
         )
 
     try:
-        result = await request.app.state.orcaslicer.import_profile(payload)
+        result = await request.app.state.orcaslicer.import_profile(payload, machine_id)
     except httpx.HTTPStatusError as exc:
         error_detail = exc.response.text.strip()
         if not error_detail:
             error_detail = str(exc)
         return _render_import_profile_modal(
             request,
+            machine_id=machine_id,
             error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
         )
     except httpx.HTTPError as exc:
         return _render_import_profile_modal(
             request,
+            machine_id=machine_id,
             error_message=f"Import request failed: {exc}",
         )
 
@@ -487,6 +550,7 @@ async def import_profile_upload(
     headers = {"HX-Trigger": json.dumps({"profiles-imported": True})}
     return _render_import_profile_modal(
         request,
+        machine_id=machine_id,
         success_message=success_message,
         import_result=result,
         headers=headers,
@@ -497,6 +561,7 @@ async def import_profile_upload(
 async def create_profile_modal(
     request: Request,
     filament_id: int,
+    machine: str = Query(default=""),
 ) -> HTMLResponse:
     filaments, error = await _load_filaments(request)
     if error:
@@ -505,7 +570,8 @@ async def create_profile_modal(
     if filament is None:
         raise HTTPException(status_code=404, detail="Filament not found")
 
-    profiles = request.app.state.orcaslicer.get_profiles()
+    _, machine_id = await _machine_context(request, machine)
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     base_options = _base_profile_options(profiles)
     inferred_filament_type = (filament.material or filament.ams_filament_type or "").strip()
     preferred_base = _recommended_base_profile(profiles, inferred_filament_type)
@@ -522,6 +588,7 @@ async def create_profile_modal(
     return _render_create_profile_modal(
         request,
         filament=filament,
+        machine_id=machine_id,
         base_options=base_options,
         selected_base_setting_id=selected_base_setting_id,
         suggested_name=_suggest_profile_name(filament),
@@ -538,6 +605,7 @@ async def create_profile_modal(
 async def create_profile_submit(
     request: Request,
     filament_id: int,
+    machine: str = Form(default=""),
     profile_name: str = Form(...),
     base_setting_id: str = Form(...),
     filament_type: str = Form(...),
@@ -554,7 +622,8 @@ async def create_profile_submit(
     if filament is None:
         raise HTTPException(status_code=404, detail="Filament not found")
 
-    profiles = request.app.state.orcaslicer.get_profiles()
+    _, machine_id = await _machine_context(request, machine)
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     base_options = _base_profile_options(profiles)
     base_option_ids = {option["setting_id"] for option in base_options}
 
@@ -586,6 +655,7 @@ async def create_profile_submit(
         return _render_create_profile_modal(
             request,
             filament=filament,
+            machine_id=machine_id,
             base_options=base_options,
             selected_base_setting_id=clean_base,
             suggested_name=clean_name,
@@ -618,12 +688,13 @@ async def create_profile_submit(
         payload["filament_max_volumetric_speed"] = [high]
 
     try:
-        result = await request.app.state.orcaslicer.import_profile(payload)
+        result = await request.app.state.orcaslicer.import_profile(payload, machine_id)
     except httpx.HTTPStatusError as exc:
         error_detail = exc.response.text.strip() or str(exc)
         return _render_create_profile_modal(
             request,
             filament=filament,
+            machine_id=machine_id,
             base_options=base_options,
             selected_base_setting_id=clean_base,
             suggested_name=clean_name,
@@ -639,6 +710,7 @@ async def create_profile_submit(
         return _render_create_profile_modal(
             request,
             filament=filament,
+            machine_id=machine_id,
             base_options=base_options,
             selected_base_setting_id=clean_base,
             suggested_name=clean_name,
@@ -659,6 +731,7 @@ async def create_profile_submit(
     return _render_create_profile_modal(
         request,
         filament=filament,
+        machine_id=machine_id,
         base_options=base_options,
         selected_base_setting_id=clean_base,
         suggested_name=clean_name,
@@ -677,6 +750,7 @@ async def create_profile_submit(
 @router.get("/filaments")
 async def filament_list(
     request: Request,
+    machine: str = Query(default=""),
     filter: str = Query(default="all", pattern="^(all|linked|unlinked)$"),
     search: str = Query(default=""),
     selected: int | None = Query(default=None),
@@ -692,6 +766,7 @@ async def filament_list(
         "partials/filament_list.html",
         {
             "request": request,
+            "machine_id": (await _machine_context(request, machine))[1],
             "filaments": filtered_filaments,
             "error": error,
             "selected_filament_id": selected_id,
@@ -703,19 +778,23 @@ async def filament_list(
 async def filament_detail(
     request: Request,
     filament_id: int,
+    machine: str = Query(default=""),
 ) -> HTMLResponse:
-    return await _render_filament_detail(request, filament_id)
+    _, machine_id = await _machine_context(request, machine)
+    return await _render_filament_detail(request, filament_id, machine_id)
 
 
 @router.post("/link/{filament_id}")
 async def link_filament(
     request: Request,
     filament_id: int,
+    machine: str = Form(default=""),
     selected_setting_id: str = Form(default=""),
     linked_filament_id: str = Form(...),
     profile_search: str = Form(default=""),
 ) -> HTMLResponse:
-    profiles = request.app.state.orcaslicer.get_profiles()
+    _, machine_id = await _machine_context(request, machine)
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     profile = _find_profile_by_setting_id(profiles, selected_setting_id)
     if profile is None:
         profile = _find_profile_by_linked_id(profiles, linked_filament_id)
@@ -750,22 +829,26 @@ async def link_filament(
             filament_id=filament_id,
             ams_filament_id=profile.filament_id,
             ams_filament_type=link_filament_type,
-            ams_setting_id=profile.setting_id,
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to link filament: {exc}") from exc
 
-    return await _render_filament_detail(request, filament_id, profile_search=profile_search)
+    return await _render_filament_detail(request, filament_id, machine_id, profile_search=profile_search)
 
 
 @router.post("/unlink/{filament_id}")
-async def unlink_filament(request: Request, filament_id: int) -> HTMLResponse:
+async def unlink_filament(
+    request: Request,
+    filament_id: int,
+    machine: str = Form(default=""),
+) -> HTMLResponse:
     try:
         await request.app.state.spoolman.unlink_filament(filament_id)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to unlink filament: {exc}") from exc
 
-    return await _render_filament_detail(request, filament_id)
+    _, machine_id = await _machine_context(request, machine)
+    return await _render_filament_detail(request, filament_id, machine_id)
 
 
 def _build_tray_statuses(request: Request) -> list[TrayStatus]:
@@ -866,16 +949,19 @@ def _build_mqtt_status(request: Request) -> dict[str, str | int | bool | None]:
     }
 
 
-async def _build_trays_context(request: Request) -> dict:
+async def _build_trays_context(request: Request, requested_machine_id: str = "") -> dict:
+    machine_options, machine_id = await _machine_context(request, requested_machine_id)
     request.app.state.mqtt.request_full_status()
     tray_statuses = _build_tray_statuses(request)
     spools, error = await _load_spools(request)
     linked_spools = [s for s in spools if s.filament.is_linked]
-    profiles = request.app.state.orcaslicer.get_profiles()
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     tray_profile_matches = _build_tray_profile_matches(tray_statuses, profiles)
 
     return {
         "request": request,
+        "machine_options": machine_options,
+        "machine_id": machine_id,
         "trays": tray_statuses,
         "tray_profile_matches": tray_profile_matches,
         "spools": linked_spools,
@@ -885,15 +971,21 @@ async def _build_trays_context(request: Request) -> dict:
 
 
 @router.get("/trays")
-async def trays_page(request: Request) -> HTMLResponse:
-    context = await _build_trays_context(request)
+async def trays_page(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
+    context = await _build_trays_context(request, machine)
     context["active_page"] = "trays"
     return templates.TemplateResponse("trays.html", context)
 
 
 @router.get("/trays/content")
-async def trays_content(request: Request) -> HTMLResponse:
-    context = await _build_trays_context(request)
+async def trays_content(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
+    context = await _build_trays_context(request, machine)
     return templates.TemplateResponse("partials/trays_content.html", context)
 
 
@@ -901,8 +993,10 @@ async def trays_content(request: Request) -> HTMLResponse:
 async def tray_detail(
     request: Request,
     tray_index: int,
+    machine: str = Query(default=""),
     search: str = Query(default=""),
 ) -> HTMLResponse:
+    _, machine_id = await _machine_context(request, machine)
     tray_statuses = _build_tray_statuses(request)
     tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
     if tray is None:
@@ -923,6 +1017,7 @@ async def tray_detail(
         {
             "request": request,
             "tray": tray,
+            "machine_id": machine_id,
             "spools": linked_spools,
             "search": search,
             "error": error,
@@ -934,6 +1029,7 @@ async def tray_detail(
 async def assign_spool_to_tray(
     request: Request,
     tray_index: int,
+    machine: str = Form(default=""),
     spool_id: int = Form(...),
 ) -> HTMLResponse:
     spools, _ = await _load_spools(request)
@@ -953,7 +1049,8 @@ async def assign_spool_to_tray(
     if tray is None:
         raise HTTPException(status_code=404, detail="Tray not found")
 
-    profiles = request.app.state.orcaslicer.get_profiles()
+    _, machine_id = await _machine_context(request, machine)
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     profile = _find_linked_profile(profiles, filament)
     if not profile:
         raise HTTPException(
@@ -999,6 +1096,7 @@ async def assign_spool_to_tray(
         "partials/tray_card.html",
         {
             "request": request,
+            "machine_id": machine_id,
             "tray": tray,
             "matched_profile": profile,
             "spools": linked_spools,
@@ -1011,11 +1109,13 @@ async def assign_spool_to_tray(
 async def profile_picker(
     request: Request,
     filament_id: int = Query(...),
+    machine: str = Query(default=""),
     selected_setting_id: str = Query(default=""),
     selected_linked_filament_id: str = Query(default=""),
     search: str = Query(default=""),
 ) -> HTMLResponse:
-    profiles = request.app.state.orcaslicer.get_profiles()
+    _, machine_id = await _machine_context(request, machine)
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     filtered_profiles = [
         profile for profile in _filter_profiles(profiles, search)
         if profile.filament_id.strip()
@@ -1033,6 +1133,7 @@ async def profile_picker(
         {
             "request": request,
             "filament_id": filament_id,
+            "machine_id": machine_id,
             "profiles": filtered_profiles,
             "profile_search": search,
             "selected_setting_id": selected_setting_id_canonical,

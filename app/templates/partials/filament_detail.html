@@ -25,7 +25,7 @@
 
     <button
       class="mt-4 rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
-      hx-get="/web/create-profile/{{ filament.id }}"
+      hx-get="/web/create-profile/{{ filament.id }}?machine={{ machine_id }}"
       hx-target="#modal"
       hx-swap="innerHTML"
     >
@@ -46,6 +46,7 @@
       <button
         class="mt-4 rounded-md border border-rose-700 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-900/30"
         hx-post="/web/unlink/{{ filament.id }}"
+        hx-vals='{"machine":"{{ machine_id }}"}'
         hx-target="#filament-detail"
       >
         Unlink

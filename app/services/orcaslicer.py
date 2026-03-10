@@ -8,33 +8,57 @@ from typing import Any
 
 import httpx
 
-from app.models import FilamentProfileResponse
+from app.models import FilamentProfileResponse, MachineProfileResponse
 
 logger = logging.getLogger(__name__)
 
 
 class OrcaSlicerClient:
     def __init__(self, base_url: str, machine_id: str, detail_fetch_concurrency: int = 10) -> None:
-        self._machine_id = machine_id
+        self._default_machine_id = str(machine_id or "").strip()
         self._detail_fetch_concurrency = max(1, detail_fetch_concurrency)
         self._client = httpx.AsyncClient(base_url=base_url.rstrip("/"), timeout=20.0)
-        self._profiles: list[FilamentProfileResponse] = []
+        self._machines: list[MachineProfileResponse] = []
+        self._profiles_by_machine: dict[str, list[FilamentProfileResponse]] = {}
+
+    @property
+    def default_machine_id(self) -> str:
+        return self._default_machine_id
 
     async def close(self) -> None:
         await self._client.aclose()
 
-    async def import_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+    async def import_profile(self, data: dict[str, Any], machine_id: str | None = None) -> dict[str, Any]:
         response = await self._client.post("/profiles/filaments", json=data)
         response.raise_for_status()
         payload = self._normalize_profile_payload(response.json())
-        await self.load_profiles()
+        self._profiles_by_machine.clear()
+        await self.load_profiles(machine_id)
         return payload
 
-    async def load_profiles(self) -> list[FilamentProfileResponse]:
+    async def load_machines(self) -> list[MachineProfileResponse]:
+        response = await self._client.get("/profiles/machines")
+        response.raise_for_status()
+
+        unique: dict[str, MachineProfileResponse] = {}
+        for item in response.json():
+            machine = MachineProfileResponse.model_validate(item)
+            if not machine.setting_id.strip():
+                continue
+            unique.setdefault(machine.setting_id, machine)
+
+        self._machines = sorted(unique.values(), key=lambda machine: machine.name.casefold())
+        return self.get_machines()
+
+    def get_machines(self) -> list[MachineProfileResponse]:
+        return [machine.model_copy() for machine in self._machines]
+
+    async def load_profiles(self, machine_id: str | None = None) -> list[FilamentProfileResponse]:
+        machine_id = self._normalize_machine_id(machine_id)
         response = await self._client.get(
             "/profiles/filaments",
             params={
-                "machine": self._machine_id,
+                "machine": machine_id,
                 "ams_assignable": "true",
             },
         )
@@ -69,21 +93,30 @@ class OrcaSlicerClient:
             loaded_profiles.append(result)
 
         loaded_profiles.sort(key=lambda profile: profile.name.lower())
-        self._profiles = loaded_profiles
-        return self.get_profiles()
+        self._profiles_by_machine[machine_id] = loaded_profiles
+        return self._copy_profiles(loaded_profiles)
 
-    def get_profiles(self) -> list[FilamentProfileResponse]:
-        return [profile.model_copy() for profile in self._profiles]
+    async def get_profiles(self, machine_id: str | None = None) -> list[FilamentProfileResponse]:
+        machine_id = self._normalize_machine_id(machine_id)
+        cached = self._profiles_by_machine.get(machine_id)
+        if cached is None:
+            return await self.load_profiles(machine_id)
+        return self._copy_profiles(cached)
 
-    def find_profile(self, filament_id: str) -> FilamentProfileResponse | None:
+    async def find_profile(self, filament_id: str, machine_id: str | None = None) -> FilamentProfileResponse | None:
         filament_id = self._normalize_id(filament_id)
+        profiles = await self.get_profiles(machine_id)
         match = next(
-            (profile for profile in self._profiles if self._ids_match(profile.filament_id, filament_id)),
+            (profile for profile in profiles if self._ids_match(profile.filament_id, filament_id)),
             None,
         )
         if match:
             return match.model_copy()
         return None
+
+    def has_machine(self, machine_id: str) -> bool:
+        normalized_machine_id = self._normalize_machine_id(machine_id)
+        return any(machine.setting_id == normalized_machine_id for machine in self._machines)
 
     @staticmethod
     def _normalize_id(value: str) -> str:
@@ -98,6 +131,16 @@ class OrcaSlicerClient:
     @staticmethod
     def _extract_profile_id(payload: dict[str, Any]) -> str:
         return str(payload.get("setting_id") or "").strip()
+
+    def _normalize_machine_id(self, machine_id: str | None) -> str:
+        normalized_machine_id = str(machine_id or "").strip()
+        if normalized_machine_id:
+            return normalized_machine_id
+        return self._default_machine_id
+
+    @staticmethod
+    def _copy_profiles(profiles: list[FilamentProfileResponse]) -> list[FilamentProfileResponse]:
+        return [profile.model_copy() for profile in profiles]
 
     @staticmethod
     def _normalize_profile_payload(payload: dict[str, Any]) -> dict[str, Any]:

@@ -71,6 +71,13 @@ class FilamentProfileResponse(BaseModel):
     source: Literal["system", "user"] = "system"
 
 
+class MachineProfileResponse(BaseModel):
+    setting_id: str
+    name: str
+    nozzle_diameter: str
+    printer_model: str
+
+
 class StatusResponse(BaseModel):
     status: str = "ok"
     port: int
@@ -197,10 +204,6 @@ class SpoolmanFilament(BaseModel):
     @property
     def ams_filament_type(self) -> str | None:
         return self._decode_extra_field("ams_filament_type")
-
-    @property
-    def ams_setting_id(self) -> str | None:
-        return self._decode_extra_field("ams_setting_id")
 
     @property
     def is_linked(self) -> bool:

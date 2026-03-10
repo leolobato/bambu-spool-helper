@@ -9,25 +9,26 @@
         onclick="document.getElementById('filter-mode').value='all'"
         hx-get="/web/filaments?filter=all"
         hx-target="#filament-list"
-        hx-include="#filament-search"
+        hx-include="#filament-search,#selected-machine"
       >All</button>
       <button
         class="rounded-md border border-slate-700 px-2 py-1.5 hover:bg-slate-800"
         onclick="document.getElementById('filter-mode').value='linked'"
         hx-get="/web/filaments?filter=linked"
         hx-target="#filament-list"
-        hx-include="#filament-search"
+        hx-include="#filament-search,#selected-machine"
       >Linked</button>
       <button
         class="rounded-md border border-slate-700 px-2 py-1.5 hover:bg-slate-800"
         onclick="document.getElementById('filter-mode').value='unlinked'"
         hx-get="/web/filaments?filter=unlinked"
         hx-target="#filament-list"
-        hx-include="#filament-search"
+        hx-include="#filament-search,#selected-machine"
       >Unlinked</button>
     </div>
 
     <input type="hidden" id="filter-mode" name="filter" value="{{ filter_mode }}" />
+    <input type="hidden" id="selected-machine" name="machine" value="{{ machine_id }}" />
 
     <input
       id="filament-search"
@@ -39,7 +40,7 @@
       hx-get="/web/filaments"
       hx-trigger="input changed delay:250ms"
       hx-target="#filament-list"
-      hx-include="#filter-mode"
+      hx-include="#filter-mode,#selected-machine"
     />
 
     <div id="filament-list" class="min-h-0 flex-1 overflow-y-auto">

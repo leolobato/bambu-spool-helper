@@ -5,13 +5,13 @@ from app.routers.web import _build_tray_profile_matches, _find_linked_profile, _
 
 
 class TrayProfileMatchingTests(unittest.TestCase):
-    def test_find_linked_profile_prefers_saved_setting_id(self) -> None:
+    def test_find_linked_profile_prefers_profile_matching_filament_material(self) -> None:
         profiles = [
             FilamentProfileResponse(
-                name="Wrong PLA Profile",
+                name="Wrong PETG Profile",
                 filament_id="GFSA00",
                 setting_id="wrong-setting",
-                filament_type="PLA",
+                filament_type="PETG",
                 nozzle_temp_min=190,
                 nozzle_temp_max=220,
                 bed_temp_min=55,
@@ -45,7 +45,6 @@ class TrayProfileMatchingTests(unittest.TestCase):
             extra={
                 "ams_filament_id": '"GFSA00"',
                 "ams_filament_type": '"PLA"',
-                "ams_setting_id": '"correct-setting"',
             },
         )
 
@@ -132,7 +131,6 @@ class TrayProfileMatchingTests(unittest.TestCase):
             extra={
                 "ams_filament_id": '"CUSTOM01"',
                 "ams_filament_type": '"PCTG"',
-                "ams_setting_id": '"custom-setting"',
             },
         )
 

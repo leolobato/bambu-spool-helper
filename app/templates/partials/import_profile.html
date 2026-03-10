@@ -64,6 +64,7 @@
         hx-swap="innerHTML"
         hx-encoding="multipart/form-data"
       >
+        <input type="hidden" name="machine" value="{{ machine_id }}" />
         <div>
           <label for="profile-file" class="mb-1 block text-xs text-slate-300">JSON profile file</label>
           <input

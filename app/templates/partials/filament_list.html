@@ -9,7 +9,7 @@
       <li>
         <button
           class="flex w-full items-center justify-between rounded-md border px-3 py-2 text-left transition {% if selected %}border-cyan-500 bg-cyan-950/40{% else %}border-slate-700 hover:bg-slate-800{% endif %}"
-          hx-get="/web/filament/{{ filament.id }}"
+          hx-get="/web/filament/{{ filament.id }}?machine={{ machine_id }}"
           hx-target="#filament-detail"
         >
           <span class="min-w-0">
