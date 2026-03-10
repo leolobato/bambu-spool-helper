@@ -1,10 +1,28 @@
 import unittest
 
 from app.models import FilamentProfileResponse
-from app.routers.web import _find_profile_by_linked_id, _find_profile_by_setting_id
+from app.routers.web import (
+    _extract_payload_filament_type,
+    _find_profile_by_linked_id,
+    _find_profile_by_setting_id,
+    _normalize_valid_filament_type,
+    _set_payload_filament_type,
+)
 
 
 class WebProfileSelectionTests(unittest.TestCase):
+    def test_normalize_valid_filament_type_accepts_known_values(self) -> None:
+        self.assertEqual(_normalize_valid_filament_type(" petg "), "PETG")
+        self.assertEqual(_normalize_valid_filament_type(""), "")
+        self.assertEqual(_normalize_valid_filament_type("PETG-HF"), "")
+
+    def test_set_payload_filament_type_updates_resolved_payload(self) -> None:
+        payload = {"name": "Resolved profile", "filament_type": [""]}
+
+        _set_payload_filament_type(payload, "petg")
+
+        self.assertEqual(_extract_payload_filament_type(payload), "PETG")
+
     def test_find_profile_by_setting_id_disambiguates_shared_filament_id(self) -> None:
         profiles = [
             FilamentProfileResponse(

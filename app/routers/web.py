@@ -13,7 +13,7 @@ from fastapi import APIRouter, File, Form, HTTPException, Query, Request, Upload
 from fastapi.responses import HTMLResponse
 from fastapi.templating import Jinja2Templates
 
-from app.models import FilamentProfileResponse, MachineProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
+from app.models import VALID_TRAY_TYPES, FilamentProfileResponse, MachineProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
 
 logger = logging.getLogger(__name__)
 
@@ -149,6 +149,24 @@ def _resolve_link_filament_type(
         if normalized_candidate:
             return normalized_candidate
     return ""
+
+
+def _normalize_valid_filament_type(value: Any) -> str:
+    normalized = str(value or "").strip().upper()
+    if normalized in VALID_TRAY_TYPES:
+        return normalized
+    return ""
+
+
+def _extract_payload_filament_type(payload: dict[str, Any]) -> str:
+    raw = payload.get("filament_type")
+    if isinstance(raw, list):
+        raw = raw[0] if raw else ""
+    return str(raw or "").strip()
+
+
+def _set_payload_filament_type(payload: dict[str, Any], filament_type: str) -> None:
+    payload["filament_type"] = [_normalize_valid_filament_type(filament_type)]
 
 
 def _values_match(left: str, right: str) -> bool:
@@ -376,6 +394,7 @@ def _render_create_profile_modal(
             "selected_base_setting_id": selected_base_setting_id,
             "suggested_name": suggested_name,
             "filament_type": filament_type,
+            "valid_filament_types": sorted(VALID_TRAY_TYPES),
             "nozzle_temp_min": nozzle_temp_min,
             "nozzle_temp_max": nozzle_temp_max,
             "bed_temp": bed_temp,
@@ -428,6 +447,10 @@ def _render_import_profile_modal(
     error_message: str = "",
     success_message: str = "",
     import_result: dict[str, Any] | None = None,
+    pending_import_payload: str = "",
+    pending_profile_name: str = "",
+    pending_filament_id: str = "",
+    pending_filament_type: str = "",
     headers: dict[str, str] | None = None,
 ) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -438,6 +461,11 @@ def _render_import_profile_modal(
             "error_message": error_message,
             "success_message": success_message,
             "import_result": import_result or {},
+            "pending_import_payload": pending_import_payload,
+            "pending_profile_name": pending_profile_name,
+            "pending_filament_id": pending_filament_id,
+            "pending_filament_type": pending_filament_type,
+            "valid_filament_types": sorted(VALID_TRAY_TYPES),
         },
         headers=headers,
     )
@@ -494,37 +522,106 @@ async def import_profile_modal(
 @router.post("/import-profile")
 async def import_profile_upload(
     request: Request,
-    profile_file: UploadFile = File(...),
+    profile_file: UploadFile | None = File(default=None),
     machine: str = Form(default=""),
+    payload_json: str = Form(default=""),
+    filament_type: str = Form(default=""),
 ) -> HTMLResponse:
     _, machine_id = await _machine_context(request, machine)
-    filename = profile_file.filename or ""
-    if not filename:
-        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Please choose a JSON file.")
-    if not filename.lower().endswith(".json"):
-        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Only .json profile files are supported.")
+    if payload_json.strip():
+        try:
+            payload = json.loads(payload_json)
+        except json.JSONDecodeError:
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message="Pending import payload is invalid. Upload the JSON file again.",
+            )
 
-    try:
-        raw = await profile_file.read()
-    finally:
-        await profile_file.close()
+        if not isinstance(payload, dict):
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message="Pending import payload is invalid. Upload the JSON file again.",
+            )
 
-    if not raw:
-        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Uploaded file is empty.")
+        normalized_filament_type = _normalize_valid_filament_type(filament_type)
+        if not normalized_filament_type:
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message="Choose a valid filament type before importing.",
+                pending_import_payload=payload_json,
+                pending_profile_name=str(payload.get("name", "")).strip(),
+                pending_filament_id=str(payload.get("filament_id", "")).strip(),
+                pending_filament_type=str(filament_type or "").strip(),
+            )
+        _set_payload_filament_type(payload, normalized_filament_type)
+    else:
+        filename = profile_file.filename if profile_file else ""
+        if not filename:
+            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Please choose a JSON file.")
+        if not filename.lower().endswith(".json"):
+            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Only .json profile files are supported.")
 
-    try:
-        payload = json.loads(raw.decode("utf-8"))
-    except UnicodeDecodeError:
-        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Profile file must be UTF-8 encoded JSON.")
-    except json.JSONDecodeError:
-        return _render_import_profile_modal(request, machine_id=machine_id, error_message="Invalid JSON file.")
+        try:
+            raw = await profile_file.read()
+        finally:
+            await profile_file.close()
 
-    if not isinstance(payload, dict):
-        return _render_import_profile_modal(
-            request,
-            machine_id=machine_id,
-            error_message="Profile JSON must be an object.",
-        )
+        if not raw:
+            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Uploaded file is empty.")
+
+        try:
+            payload = json.loads(raw.decode("utf-8"))
+        except UnicodeDecodeError:
+            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Profile file must be UTF-8 encoded JSON.")
+        except json.JSONDecodeError:
+            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Invalid JSON file.")
+
+        if not isinstance(payload, dict):
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message="Profile JSON must be an object.",
+            )
+
+        try:
+            resolved_preview = await request.app.state.orcaslicer.resolve_import_profile(payload)
+        except httpx.HTTPStatusError as exc:
+            error_detail = exc.response.text.strip() or str(exc)
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message=f"Profile resolution failed ({exc.response.status_code}): {error_detail}",
+            )
+        except httpx.HTTPError as exc:
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message=f"Profile resolution request failed: {exc}",
+            )
+
+        resolved_payload = resolved_preview.get("resolved_payload")
+        if not isinstance(resolved_payload, dict):
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message="Resolved profile payload is invalid.",
+            )
+
+        payload = dict(resolved_payload)
+        normalized_filament_type = _normalize_valid_filament_type(_extract_payload_filament_type(payload))
+        if not normalized_filament_type:
+            return _render_import_profile_modal(
+                request,
+                machine_id=machine_id,
+                error_message="Resolved profile is missing a valid filament type. Choose one before importing.",
+                pending_import_payload=json.dumps(payload),
+                pending_profile_name=str(resolved_preview.get("name", "")).strip(),
+                pending_filament_id=str(resolved_preview.get("filament_id", "")).strip(),
+                pending_filament_type=_extract_payload_filament_type(payload),
+            )
 
     try:
         result = await request.app.state.orcaslicer.import_profile(payload, machine_id)
@@ -573,11 +670,11 @@ async def create_profile_modal(
     _, machine_id = await _machine_context(request, machine)
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     base_options = _base_profile_options(profiles)
-    inferred_filament_type = (filament.material or filament.ams_filament_type or "").strip()
+    inferred_filament_type = _normalize_valid_filament_type(filament.material or filament.ams_filament_type or "")
     preferred_base = _recommended_base_profile(profiles, inferred_filament_type)
     selected_base_setting_id = preferred_base.setting_id if preferred_base else ""
     if not inferred_filament_type and preferred_base:
-        inferred_filament_type = preferred_base.filament_type
+        inferred_filament_type = _normalize_valid_filament_type(preferred_base.filament_type)
 
     extra = filament.extra or {}
     nozzle_min, nozzle_max = _decode_extra_range(extra, "nozzle_temp")
@@ -629,7 +726,7 @@ async def create_profile_submit(
 
     clean_name = profile_name.strip()
     clean_base = base_setting_id.strip()
-    clean_type = filament_type.strip()
+    clean_type = _normalize_valid_filament_type(filament_type)
 
     nozzle_min = _safe_int(nozzle_temp_min)
     nozzle_max = _safe_int(nozzle_temp_max)
@@ -645,7 +742,7 @@ async def create_profile_submit(
     elif clean_base not in base_option_ids:
         error_message = "Selected base filament profile is invalid."
     elif not clean_type:
-        error_message = "Filament type is required."
+        error_message = "Choose a valid filament type."
     elif (nozzle_min is None) != (nozzle_max is None):
         error_message = "Provide both nozzle min and max temperatures, or leave both empty."
     elif (speed_min is None) != (speed_max is None):

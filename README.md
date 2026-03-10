@@ -80,3 +80,5 @@ Calls `orcaslicer-cli`'s `POST /profiles/reload`, then refreshes the selected ma
 ### `GET /web/`
 
 Web interface for browsing and linking filaments.
+
+Imported filament JSON is resolved through `orcaslicer-cli` first. If the resolved profile does not contain a valid AMS `filament_type`, the web UI prompts for one before saving so the profile remains AMS-assignable.

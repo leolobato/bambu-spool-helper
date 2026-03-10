@@ -36,6 +36,11 @@ class OrcaSlicerClient:
         await self.load_profiles(machine_id)
         return payload
 
+    async def resolve_import_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        response = await self._client.post("/profiles/filaments/resolve-import", json=data)
+        response.raise_for_status()
+        return response.json()
+
     async def reload_profiles(self, machine_id: str | None = None) -> tuple[dict[str, Any], list[FilamentProfileResponse]]:
         response = await self._client.post("/profiles/reload")
         response.raise_for_status()

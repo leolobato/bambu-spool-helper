@@ -101,14 +101,17 @@
           </div>
           <div>
             <label for="filament-type" class="mb-1 block text-xs text-slate-300">Filament type</label>
-            <input
+            <select
               id="filament-type"
               name="filament_type"
-              type="text"
-              value="{{ filament_type }}"
               required
               class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            />
+            >
+              <option value="">Choose filament type</option>
+              {% for option in valid_filament_types %}
+                <option value="{{ option }}" {% if option == filament_type %}selected{% endif %}>{{ option }}</option>
+              {% endfor %}
+            </select>
           </div>
         </div>
 
