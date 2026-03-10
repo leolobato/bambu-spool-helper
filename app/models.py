@@ -36,8 +36,12 @@ class StatusResponse(BaseModel):
 
 class ActivateRequest(BaseModel):
     filament_id: str
+    filament_type: str
     tray: int = Field(ge=0, le=4)
-    color_hex: str
+    color_hex: str = ""
+    nozzle_temp_min: int = 0
+    nozzle_temp_max: int = 0
+    bed_temp: int = 0
 
 
 class ActivateResponse(BaseModel):
