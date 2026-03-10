@@ -11,6 +11,7 @@
     hx-trigger="input changed delay:250ms, search, submit"
   >
     <input type="hidden" name="filament_id" value="{{ filament_id }}" />
+    <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
     <input type="hidden" name="selected_linked_filament_id" value="{{ selected_linked_filament_id }}" />
     <input
       id="profile-search"
@@ -29,9 +30,14 @@
       hx-target="#filament-detail"
     >
       <input type="hidden" name="profile_search" value="{{ profile_search }}" />
+      <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
       <select name="linked_filament_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
         {% for profile in profiles %}
-          <option value="{{ profile.filament_id }}" {% if profile.filament_id == selected_linked_filament_id %}selected{% endif %}>
+          <option
+            value="{{ profile.filament_id }}"
+            data-setting-id="{{ profile.setting_id }}"
+            {% if profile.setting_id == selected_setting_id or (not selected_setting_id and profile.filament_id == selected_linked_filament_id) %}selected{% endif %}
+          >
             {{ profile.name }} | {{ profile.filament_type }} | {{ profile.filament_id }}
           </option>
         {% endfor %}
@@ -40,6 +46,44 @@
         Link Filament
       </button>
     </form>
+    <script>
+      (() => {
+        const currentScript = document.currentScript;
+        if (!currentScript) {
+          return;
+        }
+
+        const form = currentScript.previousElementSibling;
+        const container = currentScript.parentElement;
+        if (!(form instanceof HTMLFormElement) || !(container instanceof HTMLElement)) {
+          return;
+        }
+
+        const select = form.querySelector('select[name="linked_filament_id"]');
+        if (!(select instanceof HTMLSelectElement)) {
+          return;
+        }
+
+        const syncSelectedSettingId = () => {
+          const option = select.selectedOptions[0];
+          const selectedSettingId = option?.dataset.settingId ?? "";
+          const selectedLinkedFilamentId = option?.value ?? "";
+          container.querySelectorAll('input[name="selected_setting_id"]').forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.value = selectedSettingId;
+            }
+          });
+          container.querySelectorAll('input[name="selected_linked_filament_id"]').forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.value = selectedLinkedFilamentId;
+            }
+          });
+        };
+
+        syncSelectedSettingId();
+        select.addEventListener("change", syncSelectedSettingId);
+      })();
+    </script>
   {% else %}
     <div class="rounded-md border border-dashed border-slate-700 p-3 text-sm text-slate-400">No profiles match this search.</div>
   {% endif %}

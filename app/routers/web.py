@@ -63,6 +63,20 @@ def _find_profile_by_linked_id(
     )
 
 
+def _find_profile_by_setting_id(
+    profiles: list[FilamentProfileResponse],
+    setting_id: str,
+) -> FilamentProfileResponse | None:
+    normalized_setting_id = str(setting_id or "").strip()
+    if not normalized_setting_id:
+        return None
+
+    return next(
+        (profile for profile in profiles if profile.setting_id.strip() == normalized_setting_id),
+        None,
+    )
+
+
 def _build_tray_profile_matches(
     trays: list[TrayStatus],
     profiles: list[FilamentProfileResponse],
@@ -239,6 +253,7 @@ async def _render_filament_detail(
             "filament": filament,
             "profiles": filtered_profiles,
             "profile_search": profile_search,
+            "selected_setting_id": linked_profile.setting_id if linked_profile else "",
             "selected_linked_filament_id": (
                 linked_profile.filament_id if linked_profile else (filament.ams_filament_id or "")
             ),
@@ -291,6 +306,7 @@ async def index(request: Request) -> HTMLResponse:
             "filament": selected_filament,
             "profiles": profiles,
             "profile_search": "",
+            "selected_setting_id": linked_profile.setting_id if linked_profile else "",
             "selected_linked_filament_id": (
                 linked_profile.filament_id if linked_profile else (selected_filament.ams_filament_id if selected_filament else "")
             ),
@@ -583,11 +599,14 @@ async def filament_detail(
 async def link_filament(
     request: Request,
     filament_id: int,
+    selected_setting_id: str = Form(default=""),
     linked_filament_id: str = Form(...),
     profile_search: str = Form(default=""),
 ) -> HTMLResponse:
     profiles = request.app.state.orcaslicer.get_profiles()
-    profile = _find_profile_by_linked_id(profiles, linked_filament_id)
+    profile = _find_profile_by_setting_id(profiles, selected_setting_id)
+    if profile is None:
+        profile = _find_profile_by_linked_id(profiles, linked_filament_id)
     if profile is None:
         raise HTTPException(status_code=400, detail="Invalid filament_id")
     if not profile.filament_id:
@@ -855,6 +874,7 @@ async def assign_spool_to_tray(
 async def profile_picker(
     request: Request,
     filament_id: int = Query(...),
+    selected_setting_id: str = Query(default=""),
     selected_linked_filament_id: str = Query(default=""),
     search: str = Query(default=""),
 ) -> HTMLResponse:
@@ -863,10 +883,13 @@ async def profile_picker(
         profile for profile in _filter_profiles(profiles, search)
         if profile.filament_id.strip()
     ]
-    selected_profile = _find_profile_by_linked_id(profiles, selected_linked_filament_id)
+    selected_profile = _find_profile_by_setting_id(profiles, selected_setting_id)
+    if selected_profile is None:
+        selected_profile = _find_profile_by_linked_id(profiles, selected_linked_filament_id)
     selected_linked_filament_id_canonical = (
         selected_profile.filament_id if selected_profile else selected_linked_filament_id
     )
+    selected_setting_id_canonical = selected_profile.setting_id if selected_profile else selected_setting_id
 
     return templates.TemplateResponse(
         "partials/profile_picker.html",
@@ -875,6 +898,7 @@ async def profile_picker(
             "filament_id": filament_id,
             "profiles": filtered_profiles,
             "profile_search": search,
+            "selected_setting_id": selected_setting_id_canonical,
             "selected_linked_filament_id": selected_linked_filament_id_canonical,
         },
     )
