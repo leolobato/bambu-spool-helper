@@ -492,6 +492,15 @@ async def index(
 
     selected_filament = filtered_filaments[0] if filtered_filaments else None
     linked_profile = _find_linked_profile(profiles, selected_filament) if selected_filament else None
+    selected_filament_type = (
+        _resolve_link_filament_type(linked_profile, selected_filament)
+        if linked_profile is not None and selected_filament is not None
+        else _normalize_valid_filament_type(selected_filament.ams_filament_type or "") if selected_filament else ""
+    )
+    link_filament_type_by_setting_id = {
+        profile.setting_id: _resolve_link_filament_type(profile, selected_filament)
+        for profile in profiles
+    } if selected_filament else {}
 
     return templates.TemplateResponse(
         "index.html",
@@ -511,6 +520,9 @@ async def index(
             "selected_linked_filament_id": (
                 linked_profile.filament_id if linked_profile else (selected_filament.ams_filament_id if selected_filament else "")
             ),
+            "selected_filament_type": selected_filament_type,
+            "valid_filament_types": sorted(VALID_TRAY_TYPES),
+            "link_filament_type_by_setting_id": link_filament_type_by_setting_id,
             "linked_profile": linked_profile,
             "active_page": "filaments",
         },
