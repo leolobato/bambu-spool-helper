@@ -28,6 +28,14 @@ def _env_str(name: str, default: str = "") -> str:
     return raw.strip()
 
 
+def _env_first(names: tuple[str, ...], default: str = "") -> str:
+    for name in names:
+        raw = os.getenv(name)
+        if raw is not None and raw.strip() != "":
+            return raw.strip()
+    return default
+
+
 @dataclass(frozen=True)
 class Settings:
     orcaslicer_url: str
@@ -52,7 +60,7 @@ def get_settings() -> Settings:
         printer_ip=_env_str("PRINTER_IP"),
         printer_access_code=_env_str("PRINTER_ACCESS_CODE"),
         printer_serial=_env_str("PRINTER_SERIAL"),
-        default_machine_profile_id=_env_str("DEFAULT_MACHINE_PROFILE_ID", "GM020"),
+        default_machine_profile_id=_env_first(("DEFAULT_MACHINE_PROFILE_ID", "DEFAULT_MACHINE_SETTING_ID"), "GM020"),
         port=_env_int("PORT", 9817),
         detail_fetch_concurrency=max(1, _env_int("DETAIL_FETCH_CONCURRENCY", 10)),
     )

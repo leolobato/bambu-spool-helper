@@ -48,12 +48,18 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to load profiles from OrcaSlicer during startup")
 
-    mqtt.connect()
+    try:
+        mqtt.connect()
+    except Exception:
+        logger.exception("Failed to initialize MQTT during startup")
 
     try:
         yield
     finally:
-        mqtt.disconnect()
+        try:
+            mqtt.disconnect()
+        except Exception:
+            logger.exception("Failed to shut down MQTT cleanly")
         await orcaslicer.close()
         await spoolman.close()
 

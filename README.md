@@ -34,6 +34,45 @@ docker compose up --build
 
 The service will be available at `http://localhost:9817`.
 
+### Local Run
+
+For local development without Docker:
+
+1. Point `.env` at your running services.
+
+```env
+ORCASLICER_URL=http://10.0.1.9:8070
+SPOOLMAN_URL=http://10.0.1.9:7912
+DEFAULT_MACHINE_PROFILE_ID=GM020
+PORT=9817
+```
+
+2. If you do not need live printer access while developing, leave these empty so MQTT is skipped:
+
+```env
+PRINTER_IP=
+PRINTER_ACCESS_CODE=
+PRINTER_SERIAL=
+```
+
+3. Start the app:
+
+```bash
+bash scripts/run-local.sh
+```
+
+The script will:
+- create `.venv` if needed
+- install `requirements.txt` if dependencies are missing
+- source `.env`
+- run `uvicorn` with reload enabled
+
+Open `http://localhost:9817/web/`.
+
+Notes:
+- The app also accepts the old env name `DEFAULT_MACHINE_SETTING_ID`, but `DEFAULT_MACHINE_PROFILE_ID` is the canonical one.
+- If MQTT initialization fails locally, the web app still starts; only printer activation is affected.
+
 ### Environment Variables
 
 | Variable | Default | Description |

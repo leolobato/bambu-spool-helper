@@ -426,6 +426,10 @@ async def _render_filament_detail(
         if linked_profile is not None
         else _normalize_valid_filament_type(filament.ams_filament_type or "")
     )
+    link_filament_type_by_setting_id = {
+        profile.setting_id: _resolve_link_filament_type(profile, filament)
+        for profile in filtered_profiles
+    }
 
     return templates.TemplateResponse(
         "partials/filament_detail.html",
@@ -441,6 +445,7 @@ async def _render_filament_detail(
             ),
             "selected_filament_type": selected_filament_type,
             "valid_filament_types": sorted(VALID_TRAY_TYPES),
+            "link_filament_type_by_setting_id": link_filament_type_by_setting_id,
             "linked_profile": linked_profile,
             "error": error,
         },
