@@ -421,11 +421,7 @@ async def _render_filament_detail(
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     linked_profile = _find_linked_profile(profiles, filament)
     filtered_profiles = _filter_profiles(profiles, profile_search)
-    selected_filament_type = (
-        _resolve_link_filament_type(linked_profile, filament)
-        if linked_profile is not None
-        else _normalize_valid_filament_type(filament.ams_filament_type or "")
-    )
+    selected_filament_type = _normalize_valid_filament_type(filament.ams_filament_type or "")
     link_filament_type_by_setting_id = {
         profile.setting_id: _resolve_link_filament_type(profile, filament)
         for profile in filtered_profiles
@@ -497,11 +493,7 @@ async def index(
 
     selected_filament = filtered_filaments[0] if filtered_filaments else None
     linked_profile = _find_linked_profile(profiles, selected_filament) if selected_filament else None
-    selected_filament_type = (
-        _resolve_link_filament_type(linked_profile, selected_filament)
-        if linked_profile is not None and selected_filament is not None
-        else _normalize_valid_filament_type(selected_filament.ams_filament_type or "") if selected_filament else ""
-    )
+    selected_filament_type = _normalize_valid_filament_type(selected_filament.ams_filament_type or "") if selected_filament else ""
     link_filament_type_by_setting_id = {
         profile.setting_id: _resolve_link_filament_type(profile, selected_filament)
         for profile in profiles
@@ -1256,8 +1248,8 @@ async def profile_picker(
     )
     selected_setting_id_canonical = selected_profile.setting_id if selected_profile else selected_setting_id
     selected_filament_type_canonical = _normalize_valid_filament_type(selected_filament_type)
-    if not selected_filament_type_canonical and selected_profile is not None:
-        selected_filament_type_canonical = _resolve_link_filament_type(selected_profile, filament)
+    if not selected_filament_type_canonical and filament is not None:
+        selected_filament_type_canonical = _normalize_valid_filament_type(filament.ams_filament_type or "")
     link_filament_type_by_setting_id = {
         profile.setting_id: _resolve_link_filament_type(profile, filament)
         for profile in filtered_profiles

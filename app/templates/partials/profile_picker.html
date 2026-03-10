@@ -40,7 +40,6 @@
           <option
             value="{{ profile.filament_id }}"
             data-setting-id="{{ profile.setting_id }}"
-            data-link-filament-type="{{ link_filament_type_by_setting_id.get(profile.setting_id, '') }}"
             {% if profile.setting_id == selected_setting_id or (not selected_setting_id and profile.filament_id == selected_linked_filament_id) %}selected{% endif %}
           >
             {{ profile.name }} | {{ profile.filament_type }} | {{ profile.filament_id }}
@@ -75,7 +74,6 @@
           const option = select.selectedOptions[0];
           const selectedSettingId = option?.dataset.settingId ?? "";
           const selectedLinkedFilamentId = option?.value ?? "";
-          const selectedFilamentType = option?.dataset.linkFilamentType ?? "";
           container.querySelectorAll('input[name="selected_setting_id"]').forEach((input) => {
             if (input instanceof HTMLInputElement) {
               input.value = selectedSettingId;
@@ -86,18 +84,23 @@
               input.value = selectedLinkedFilamentId;
             }
           });
+        };
+
+        const syncSelectedFilamentType = () => {
+          const selectedFilamentType = typeSelect instanceof HTMLSelectElement ? typeSelect.value : "";
           container.querySelectorAll('input[name="selected_filament_type"]').forEach((input) => {
             if (input instanceof HTMLInputElement) {
               input.value = selectedFilamentType;
             }
           });
-          if (typeSelect instanceof HTMLSelectElement && selectedFilamentType) {
-            typeSelect.value = selectedFilamentType;
-          }
         };
 
         syncSelectedSettingId();
+        syncSelectedFilamentType();
         select.addEventListener("change", syncSelectedSettingId);
+        if (typeSelect instanceof HTMLSelectElement) {
+          typeSelect.addEventListener("change", syncSelectedFilamentType);
+        }
       })();
     </script>
   {% else %}
