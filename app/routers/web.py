@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from pathlib import Path
 from typing import Any
 
@@ -18,6 +19,25 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/web", tags=["Web"])
 templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent.parent / "templates"))
+
+FILAMENT_TYPE_NAME_HINTS = (
+    ("PCTG", "PCTG"),
+    ("PETG", "PETG"),
+    ("BVOH", "BVOH"),
+    ("HIPS", "HIPS"),
+    ("PVA", "PVA"),
+    ("PPS", "PPS"),
+    ("PPA", "PPA"),
+    ("PHA", "PHA"),
+    ("EVA", "EVA"),
+    ("ABS", "ABS"),
+    ("ASA", "ASA"),
+    ("TPU", "TPU"),
+    ("PLA", "PLA"),
+    ("PC", "PC"),
+    ("PP", "PP"),
+    ("PE", "PE"),
+)
 
 
 def _filter_profiles(profiles: list[FilamentProfileResponse], search: str) -> list[FilamentProfileResponse]:
@@ -75,6 +95,38 @@ def _find_profile_by_setting_id(
         (profile for profile in profiles if profile.setting_id.strip() == normalized_setting_id),
         None,
     )
+
+
+def _infer_filament_type_from_name(name: str) -> str:
+    normalized_name = str(name or "").upper()
+    if not normalized_name:
+        return ""
+
+    for marker, filament_type in FILAMENT_TYPE_NAME_HINTS:
+        if marker in normalized_name:
+            return filament_type
+
+    if re.search(r"\bPA(?:[0-9A-Z+-]*)\b", normalized_name):
+        return "PA"
+
+    return ""
+
+
+def _resolve_link_filament_type(
+    profile: FilamentProfileResponse,
+    filament: SpoolmanFilament | None,
+) -> str:
+    candidates = [
+        profile.filament_type,
+        filament.material if filament else "",
+        filament.ams_filament_type if filament else "",
+        _infer_filament_type_from_name(profile.name),
+    ]
+    for candidate in candidates:
+        normalized_candidate = str(candidate or "").strip()
+        if normalized_candidate:
+            return normalized_candidate
+    return ""
 
 
 def _build_tray_profile_matches(
@@ -612,11 +664,24 @@ async def link_filament(
     if not profile.filament_id:
         raise HTTPException(status_code=400, detail="Selected profile has no filament_id")
 
+    filament: SpoolmanFilament | None = None
+    try:
+        filament = await request.app.state.spoolman.get_filament(filament_id)
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to fetch Spoolman filament %s before linking: %s", filament_id, exc)
+
+    link_filament_type = _resolve_link_filament_type(profile, filament)
+    if not link_filament_type:
+        raise HTTPException(
+            status_code=400,
+            detail="Selected profile has no filament_type and no fallback material could be inferred",
+        )
+
     try:
         await request.app.state.spoolman.link_filament(
             filament_id=filament_id,
             ams_filament_id=profile.filament_id,
-            ams_filament_type=profile.filament_type,
+            ams_filament_type=link_filament_type,
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to link filament: {exc}") from exc

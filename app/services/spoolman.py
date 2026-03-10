@@ -33,6 +33,11 @@ class SpoolmanClient:
         payload = response.json()
         return [SpoolmanFilament.model_validate(item) for item in payload]
 
+    async def get_filament(self, filament_id: int) -> SpoolmanFilament:
+        response = await self._client.get(f"/api/v1/filament/{filament_id}")
+        response.raise_for_status()
+        return SpoolmanFilament.model_validate(response.json())
+
     async def ensure_extra_fields(self) -> None:
         response = await self._client.get("/api/v1/field/filament")
         response.raise_for_status()
