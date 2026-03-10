@@ -75,7 +75,7 @@ Tray values: 0-3 for AMS slots, 4 for external spool.
 
 ### `POST /reload`
 
-Re-fetches profiles from orcaslicer-cli.
+Calls `orcaslicer-cli`'s `POST /profiles/reload`, then refreshes the selected machine's cached AMS-assignable profile list in `bambu-spool-helper`.
 
 ### `GET /web/`
 

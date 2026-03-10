@@ -102,14 +102,15 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
 async def reload_profiles(
     request: Request,
     machine: str | None = Query(default=None),
-) -> dict[str, int | bool]:
+) -> dict[str, Any]:
     try:
-        profiles = await request.app.state.orcaslicer.load_profiles(machine)
+        reload_summary, profiles = await request.app.state.orcaslicer.reload_profiles(machine)
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to reload profiles: {exc}") from exc
 
     return {
         "success": True,
+        "orcaslicer": reload_summary,
         "profiles_loaded": len(profiles),
     }
 

@@ -36,6 +36,14 @@ class OrcaSlicerClient:
         await self.load_profiles(machine_id)
         return payload
 
+    async def reload_profiles(self, machine_id: str | None = None) -> tuple[dict[str, Any], list[FilamentProfileResponse]]:
+        response = await self._client.post("/profiles/reload")
+        response.raise_for_status()
+        summary = response.json()
+        self._profiles_by_machine.clear()
+        profiles = await self.load_profiles(machine_id)
+        return summary, profiles
+
     async def load_machines(self) -> list[MachineProfileResponse]:
         response = await self._client.get("/profiles/machines")
         response.raise_for_status()
