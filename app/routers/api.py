@@ -8,7 +8,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.models import ActivationRecord, ActivateRequest, ActivateResponse, FilamentProfileResponse, StatusResponse
+from app.models import VALID_TRAY_TYPES, ActivationRecord, ActivateRequest, ActivateResponse, FilamentProfileResponse, StatusResponse
 
 router = APIRouter(tags=["API"])
 
@@ -21,6 +21,11 @@ async def get_status(request: Request) -> StatusResponse:
     settings = request.app.state.settings
     profile_count = len(request.app.state.orcaslicer.get_profiles())
     return StatusResponse(port=settings.port, profiles_loaded=profile_count)
+
+
+@router.get("/valid-tray-types")
+async def get_valid_tray_types() -> list[str]:
+    return sorted(VALID_TRAY_TYPES)
 
 
 @router.get("/profiles", response_model=list[FilamentProfileResponse])

@@ -6,7 +6,50 @@ import json
 from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Valid tray_type values accepted by the Bambu Lab AMS ams_filament_setting
+# MQTT command.  Sourced from BambuStudio PrintConfig.cpp filament_type enum
+# plus the firmware support-material aliases (PLA-S, PA-S, ABS-S).
+VALID_TRAY_TYPES: frozenset[str] = frozenset({
+    "PLA",
+    "ABS",
+    "ASA",
+    "ASA-CF",
+    "PETG",
+    "PCTG",
+    "TPU",
+    "TPU-AMS",
+    "PC",
+    "PA",
+    "PA-CF",
+    "PA-GF",
+    "PA6-CF",
+    "PLA-CF",
+    "PET-CF",
+    "PETG-CF",
+    "PVA",
+    "HIPS",
+    "PLA-AERO",
+    "PPS",
+    "PPS-CF",
+    "PPA-CF",
+    "PPA-GF",
+    "ABS-GF",
+    "ASA-AERO",
+    "PE",
+    "PP",
+    "EVA",
+    "PHA",
+    "BVOH",
+    "PE-CF",
+    "PP-CF",
+    "PP-GF",
+    # Firmware support-material aliases
+    "PLA-S",
+    "PA-S",
+    "ABS-S",
+})
 
 
 class FilamentProfileResponse(BaseModel):
@@ -42,6 +85,16 @@ class ActivateRequest(BaseModel):
     nozzle_temp_min: int = 0
     nozzle_temp_max: int = 0
     bed_temp: int = 0
+
+    @field_validator("filament_type")
+    @classmethod
+    def filament_type_must_be_valid(cls, v: str) -> str:
+        normalized = v.strip().upper()
+        if normalized not in VALID_TRAY_TYPES:
+            raise ValueError(
+                f"Invalid filament_type '{v}'. Must be one of: {', '.join(sorted(VALID_TRAY_TYPES))}"
+            )
+        return normalized
 
 
 class ActivateResponse(BaseModel):

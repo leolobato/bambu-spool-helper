@@ -730,11 +730,19 @@ async def link_filament(
     except httpx.HTTPError as exc:
         logger.warning("Failed to fetch Spoolman filament %s before linking: %s", filament_id, exc)
 
+    from app.models import VALID_TRAY_TYPES
+
     link_filament_type = _resolve_link_filament_type(profile, filament)
     if not link_filament_type:
         raise HTTPException(
             status_code=400,
             detail="Selected profile has no filament_type and no fallback material could be inferred",
+        )
+    if link_filament_type.upper() not in VALID_TRAY_TYPES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Filament type '{link_filament_type}' is not a valid AMS tray type. "
+            f"Valid types: {', '.join(sorted(VALID_TRAY_TYPES))}",
         )
 
     try:
