@@ -19,7 +19,17 @@
       </div>
       <div class="rounded-md border border-slate-700 p-2">
         <div class="text-xs uppercase tracking-wide text-slate-400">AMS Filament Type</div>
-        <div class="font-mono text-slate-200">{{ filament.ams_filament_type or "-" }}</div>
+        <select
+          id="ams-filament-type-{{ filament.id }}"
+          name="override_filament_type"
+          form="link-filament-form-{{ filament.id }}"
+          class="mt-1 w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+        >
+          <option value="">Choose filament type</option>
+          {% for option in valid_filament_types %}
+            <option value="{{ option }}" {% if option == selected_filament_type %}selected{% endif %}>{{ option }}</option>
+          {% endfor %}
+        </select>
       </div>
     </div>
 

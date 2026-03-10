@@ -138,6 +138,36 @@ class TrayProfileMatchingTests(unittest.TestCase):
 
         self.assertEqual(resolved, "PCTG")
 
+    def test_resolve_link_filament_type_skips_invalid_spool_material_and_uses_profile_name_hint(self) -> None:
+        profile = FilamentProfileResponse(
+            name="SUNLU PLA+ @BBL A1M",
+            filament_id="OGFSNL03",
+            setting_id="GFSNLS03_07",
+            filament_type="",
+            nozzle_temp_min=0,
+            nozzle_temp_max=0,
+            bed_temp_min=0,
+            bed_temp_max=0,
+            drying_temp_min=0,
+            drying_temp_max=0,
+            drying_time=0,
+            print_speed_min=0,
+            print_speed_max=0,
+        )
+        filament = SpoolmanFilament(
+            id=3,
+            name="White",
+            material="PLA+",
+            extra={
+                "ams_filament_id": '"OGFSNL03"',
+                "ams_filament_type": '""',
+            },
+        )
+
+        resolved = _resolve_link_filament_type(profile, filament)
+
+        self.assertEqual(resolved, "PLA")
+
 
 if __name__ == "__main__":
     unittest.main()

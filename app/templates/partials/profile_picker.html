@@ -14,6 +14,7 @@
     <input type="hidden" name="machine" value="{{ machine_id }}" />
     <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
     <input type="hidden" name="selected_linked_filament_id" value="{{ selected_linked_filament_id }}" />
+    <input type="hidden" name="selected_filament_type" value="{{ selected_filament_type }}" />
     <input
       id="profile-search"
       name="search"
@@ -26,6 +27,7 @@
 
   {% if profiles %}
     <form
+      id="link-filament-form-{{ filament_id }}"
       class="space-y-2"
       hx-post="/web/link/{{ filament_id }}"
       hx-target="#filament-detail"
@@ -38,6 +40,7 @@
           <option
             value="{{ profile.filament_id }}"
             data-setting-id="{{ profile.setting_id }}"
+            data-link-filament-type="{{ link_filament_type_by_setting_id.get(profile.setting_id, '') }}"
             {% if profile.setting_id == selected_setting_id or (not selected_setting_id and profile.filament_id == selected_linked_filament_id) %}selected{% endif %}
           >
             {{ profile.name }} | {{ profile.filament_type }} | {{ profile.filament_id }}
@@ -66,10 +69,13 @@
           return;
         }
 
+        const typeSelect = document.getElementById("ams-filament-type-{{ filament_id }}");
+
         const syncSelectedSettingId = () => {
           const option = select.selectedOptions[0];
           const selectedSettingId = option?.dataset.settingId ?? "";
           const selectedLinkedFilamentId = option?.value ?? "";
+          const selectedFilamentType = option?.dataset.linkFilamentType ?? "";
           container.querySelectorAll('input[name="selected_setting_id"]').forEach((input) => {
             if (input instanceof HTMLInputElement) {
               input.value = selectedSettingId;
@@ -80,6 +86,14 @@
               input.value = selectedLinkedFilamentId;
             }
           });
+          container.querySelectorAll('input[name="selected_filament_type"]').forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.value = selectedFilamentType;
+            }
+          });
+          if (typeSelect instanceof HTMLSelectElement && selectedFilamentType) {
+            typeSelect.value = selectedFilamentType;
+          }
         };
 
         syncSelectedSettingId();

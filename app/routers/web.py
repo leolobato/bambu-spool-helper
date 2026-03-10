@@ -145,7 +145,7 @@ def _resolve_link_filament_type(
         _infer_filament_type_from_name(profile.name),
     ]
     for candidate in candidates:
-        normalized_candidate = str(candidate or "").strip()
+        normalized_candidate = _normalize_valid_filament_type(candidate)
         if normalized_candidate:
             return normalized_candidate
     return ""
@@ -421,6 +421,11 @@ async def _render_filament_detail(
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     linked_profile = _find_linked_profile(profiles, filament)
     filtered_profiles = _filter_profiles(profiles, profile_search)
+    selected_filament_type = (
+        _resolve_link_filament_type(linked_profile, filament)
+        if linked_profile is not None
+        else _normalize_valid_filament_type(filament.ams_filament_type or "")
+    )
 
     return templates.TemplateResponse(
         "partials/filament_detail.html",
@@ -434,6 +439,8 @@ async def _render_filament_detail(
             "selected_linked_filament_id": (
                 linked_profile.filament_id if linked_profile else (filament.ams_filament_id or "")
             ),
+            "selected_filament_type": selected_filament_type,
+            "valid_filament_types": sorted(VALID_TRAY_TYPES),
             "linked_profile": linked_profile,
             "error": error,
         },
@@ -888,6 +895,7 @@ async def link_filament(
     machine: str = Form(default=""),
     selected_setting_id: str = Form(default=""),
     linked_filament_id: str = Form(...),
+    override_filament_type: str = Form(default=""),
     profile_search: str = Form(default=""),
 ) -> HTMLResponse:
     _, machine_id = await _machine_context(request, machine)
@@ -908,7 +916,7 @@ async def link_filament(
 
     from app.models import VALID_TRAY_TYPES
 
-    link_filament_type = _resolve_link_filament_type(profile, filament)
+    link_filament_type = _normalize_valid_filament_type(override_filament_type) or _resolve_link_filament_type(profile, filament)
     if not link_filament_type:
         raise HTTPException(
             status_code=400,
@@ -1209,10 +1217,16 @@ async def profile_picker(
     machine: str = Query(default=""),
     selected_setting_id: str = Query(default=""),
     selected_linked_filament_id: str = Query(default=""),
+    selected_filament_type: str = Query(default=""),
     search: str = Query(default=""),
 ) -> HTMLResponse:
     _, machine_id = await _machine_context(request, machine)
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
+    filament: SpoolmanFilament | None = None
+    try:
+        filament = await request.app.state.spoolman.get_filament(filament_id)
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to fetch Spoolman filament %s for profile picker: %s", filament_id, exc)
     filtered_profiles = [
         profile for profile in _filter_profiles(profiles, search)
         if profile.filament_id.strip()
@@ -1224,6 +1238,13 @@ async def profile_picker(
         selected_profile.filament_id if selected_profile else selected_linked_filament_id
     )
     selected_setting_id_canonical = selected_profile.setting_id if selected_profile else selected_setting_id
+    selected_filament_type_canonical = _normalize_valid_filament_type(selected_filament_type)
+    if not selected_filament_type_canonical and selected_profile is not None:
+        selected_filament_type_canonical = _resolve_link_filament_type(selected_profile, filament)
+    link_filament_type_by_setting_id = {
+        profile.setting_id: _resolve_link_filament_type(profile, filament)
+        for profile in filtered_profiles
+    }
 
     return templates.TemplateResponse(
         "partials/profile_picker.html",
@@ -1235,5 +1256,7 @@ async def profile_picker(
             "profile_search": search,
             "selected_setting_id": selected_setting_id_canonical,
             "selected_linked_filament_id": selected_linked_filament_id_canonical,
+            "selected_filament_type": selected_filament_type_canonical,
+            "link_filament_type_by_setting_id": link_filament_type_by_setting_id,
         },
     )
