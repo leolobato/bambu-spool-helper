@@ -70,6 +70,11 @@
         return;
       }
 
+      if (document.hidden) {
+        event.preventDefault();
+        return;
+      }
+
       const active = document.activeElement;
       const hasFocusedControl = isInsideTraysContent(active) && isInteractive(active);
       if (hasFocusedControl || Date.now() < pauseUntil) {

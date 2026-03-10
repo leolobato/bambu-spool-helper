@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 
 MQTT_PORT = 8883
 MQTT_USERNAME = "bblp"
+MQTT_IDLE_TIMEOUT_SECONDS = 20
 
 
 class TrayData:
@@ -50,6 +51,7 @@ class MQTTPrinterClient:
         self._trays: dict[int, TrayData] = {}  # tray_index -> TrayData
         self._last_error: str | None = None
         self._last_message_at: datetime | None = None
+        self._disconnect_timer: threading.Timer | None = None
 
     def _serial_masked(self) -> str:
         if len(self._serial) <= 6:
@@ -89,6 +91,11 @@ class MQTTPrinterClient:
                 self._connected = False
                 self._last_error = "MQTT not configured"
             return
+
+        with self._lock:
+            if self._client is not None:
+                self._schedule_disconnect_locked()
+                return
 
         logger.info(
             "Starting MQTT connection to %s:%d (serial=%s, user=%s, access_code_len=%d)",
@@ -137,16 +144,45 @@ class MQTTPrinterClient:
 
         client.loop_start()
 
-    def disconnect(self) -> None:
-        if self._client is None:
-            return
-        logger.info("Stopping MQTT client loop and disconnecting")
-        self._client.loop_stop()
-        self._client.disconnect()
-        self._client = None
         with self._lock:
+            self._schedule_disconnect_locked()
+
+    def disconnect(self) -> None:
+        client: mqtt.Client | None
+        with self._lock:
+            self._cancel_disconnect_timer_locked()
+            client = self._client
+            self._client = None
             self._connected = False
             self._last_error = "Disconnected"
+        if client is None:
+            return
+        logger.info("Stopping MQTT client loop and disconnecting")
+        client.loop_stop()
+        client.disconnect()
+
+    def ensure_connected(self, timeout: float = 3.0) -> tuple[bool, str]:
+        if not self.configured:
+            return True, "MQTT not configured; command skipped"
+
+        self.connect()
+        deadline = time.monotonic() + max(0.1, timeout)
+        while time.monotonic() < deadline:
+            with self._lock:
+                connected = self._connected
+                last_error = self._last_error
+                has_client = self._client is not None
+                if connected:
+                    self._schedule_disconnect_locked()
+                    return True, "MQTT connection is ready"
+                if not has_client:
+                    return False, last_error or "MQTT client is not initialized"
+            time.sleep(0.05)
+
+        with self._lock:
+            last_error = self._last_error
+            self._schedule_disconnect_locked()
+        return False, last_error or "MQTT connection is not ready"
 
     def activate_filament(
         self,
@@ -166,15 +202,15 @@ class MQTTPrinterClient:
         tray_uuid: str | None = None,
         cali_idx: int | None = None,
     ) -> tuple[bool, str]:
+        ready, message = self.ensure_connected()
+        if not ready:
+            return False, message
         if not self.configured:
             return True, "MQTT not configured; command skipped"
 
         client = self._client
         if client is None:
             return False, "MQTT client is not initialized"
-
-        if not self._connected:
-            return False, "MQTT connection is not ready"
 
         try:
             ams_id, tray_id = self._map_tray(tray)
@@ -268,7 +304,24 @@ class MQTTPrinterClient:
             }
 
     def request_full_status(self) -> None:
+        ready, _ = self.ensure_connected()
+        if not ready:
+            return
         self._request_full_status()
+
+    def _cancel_disconnect_timer_locked(self) -> None:
+        if self._disconnect_timer is not None:
+            self._disconnect_timer.cancel()
+            self._disconnect_timer = None
+
+    def _schedule_disconnect_locked(self) -> None:
+        self._cancel_disconnect_timer_locked()
+        if self._client is None:
+            return
+        timer = threading.Timer(MQTT_IDLE_TIMEOUT_SECONDS, self.disconnect)
+        timer.daemon = True
+        timer.start()
+        self._disconnect_timer = timer
 
     def _request_full_status(self) -> None:
         if self._client is None:
@@ -367,6 +420,8 @@ class MQTTPrinterClient:
         with self._lock:
             self._connected = connected
             self._last_error = None if connected else f"MQTT connect failed (rc={reason_code})"
+            if connected:
+                self._schedule_disconnect_locked()
 
         if connected:
             report_topic = f"device/{self._serial}/report"
@@ -424,4 +479,5 @@ class MQTTPrinterClient:
         with self._lock:
             self._last_message_at = datetime.now(timezone.utc)
             tray_count = len(self._trays)
+            self._schedule_disconnect_locked()
         logger.info("MQTT report processed from topic=%s (cached trays=%d)", msg.topic, tray_count)
