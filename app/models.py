@@ -142,6 +142,10 @@ class SpoolmanFilament(BaseModel):
         return self._decode_extra_field("ams_filament_type")
 
     @property
+    def ams_setting_id(self) -> str | None:
+        return self._decode_extra_field("ams_setting_id")
+
+    @property
     def is_linked(self) -> bool:
         return bool(self.ams_filament_id and self.ams_filament_type)
 

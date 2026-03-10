@@ -9,11 +9,19 @@ import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
 from app.models import ActivationRecord, ActivateRequest, ActivateResponse, FilamentProfileResponse, StatusResponse
+from app.routers.web import _infer_filament_type_from_name
 
 router = APIRouter(tags=["API"])
 
 
 TRAY_LABELS = ["Tray 1", "Tray 2", "Tray 3", "Tray 4", "Ext"]
+
+
+def _resolve_activation_filament_type(profile_name: str, filament_type: str) -> str:
+    normalized_filament_type = str(filament_type or "").strip()
+    if normalized_filament_type:
+        return normalized_filament_type
+    return _infer_filament_type_from_name(profile_name)
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -59,6 +67,13 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
             profile_name=profile.name,
             message=f"Profile {profile.name} has no filament_id",
         )
+    activation_filament_type = _resolve_activation_filament_type(profile.name, profile.filament_type)
+    if not activation_filament_type:
+        return ActivateResponse(
+            success=False,
+            profile_name=profile.name,
+            message=f"Profile {profile.name} has no filament_type",
+        )
 
     success, mqtt_message = mqtt.activate_filament(
         tray=payload.tray,
@@ -66,7 +81,7 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
         color_hex=payload.color_hex,
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
-        filament_type=profile.filament_type,
+        filament_type=activation_filament_type,
         bed_temp=profile.bed_temp_min,
         k=profile.k,
         n=profile.n,

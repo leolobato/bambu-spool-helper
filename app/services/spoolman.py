@@ -13,6 +13,7 @@ class SpoolmanClient:
     REQUIRED_EXTRA_FIELDS = [
         ("ams_filament_id", "AMS Filament ID"),
         ("ams_filament_type", "AMS Filament Type"),
+        ("ams_setting_id", "AMS Profile Setting ID"),
     ]
 
     def __init__(self, base_url: str) -> None:
@@ -62,6 +63,7 @@ class SpoolmanClient:
         filament_id: int,
         ams_filament_id: str,
         ams_filament_type: str,
+        ams_setting_id: str,
     ) -> None:
         await self.ensure_extra_fields()
         await self._patch_filament(
@@ -69,6 +71,7 @@ class SpoolmanClient:
             {
                 "ams_filament_id": self._json_encode(ams_filament_id),
                 "ams_filament_type": self._json_encode(ams_filament_type),
+                "ams_setting_id": self._json_encode(ams_setting_id),
             },
         )
 
@@ -78,6 +81,7 @@ class SpoolmanClient:
             {
                 "ams_filament_id": self._json_encode(""),
                 "ams_filament_type": self._json_encode(""),
+                "ams_setting_id": self._json_encode(""),
             },
         )
 

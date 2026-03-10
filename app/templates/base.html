@@ -71,6 +71,11 @@
         }
 
         const params = new URLSearchParams({ filament_id: filamentInput.value });
+        const selectedSettingInput = picker.querySelector("input[name='selected_setting_id']");
+        if (selectedSettingInput && selectedSettingInput.value) {
+          params.set("selected_setting_id", selectedSettingInput.value);
+        }
+
         const selectedInput = picker.querySelector("input[name='selected_linked_filament_id']");
         if (selectedInput && selectedInput.value) {
           params.set("selected_linked_filament_id", selectedInput.value);

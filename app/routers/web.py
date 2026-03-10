@@ -97,6 +97,17 @@ def _find_profile_by_setting_id(
     )
 
 
+def _find_profiles_by_linked_id(
+    profiles: list[FilamentProfileResponse],
+    linked_id: str,
+) -> list[FilamentProfileResponse]:
+    return [
+        profile
+        for profile in profiles
+        if _profile_ids_match(profile.filament_id, linked_id)
+    ]
+
+
 def _infer_filament_type_from_name(name: str) -> str:
     normalized_name = str(name or "").upper()
     if not normalized_name:
@@ -129,6 +140,63 @@ def _resolve_link_filament_type(
     return ""
 
 
+def _values_match(left: str, right: str) -> bool:
+    left_normalized = str(left or "").strip().casefold()
+    right_normalized = str(right or "").strip().casefold()
+    return bool(left_normalized and right_normalized and left_normalized == right_normalized)
+
+
+def _float_matches(left: float | None, right: float | None, tolerance: float = 1e-6) -> bool:
+    if left is None or right is None:
+        return False
+    return abs(left - right) <= tolerance
+
+
+def _score_tray_profile_match(
+    tray: TrayStatus,
+    profile: FilamentProfileResponse,
+) -> tuple[int, int, int, int, int]:
+    return (
+        1 if _values_match(profile.filament_type, tray.tray_type) else 0,
+        1 if tray.nozzle_temp_min == profile.nozzle_temp_min and tray.nozzle_temp_max == profile.nozzle_temp_max else 0,
+        1 if tray.bed_temp and tray.bed_temp == profile.bed_temp_min else 0,
+        1 if _float_matches(profile.k, tray.k) and _float_matches(profile.n, tray.n) else 0,
+        1 if profile.source == "user" else 0,
+    )
+
+
+def _find_profile_for_tray(
+    profiles: list[FilamentProfileResponse],
+    tray: TrayStatus,
+) -> FilamentProfileResponse | None:
+    candidates = _find_profiles_by_linked_id(profiles, tray.tray_info_idx)
+    if not candidates:
+        return None
+    if len(candidates) == 1:
+        return candidates[0]
+
+    ranked_candidates = sorted(
+        candidates,
+        key=lambda profile: (
+            _score_tray_profile_match(tray, profile),
+            profile.name.casefold(),
+        ),
+        reverse=True,
+    )
+    return ranked_candidates[0]
+
+
+def _find_linked_profile(
+    profiles: list[FilamentProfileResponse],
+    filament: SpoolmanFilament,
+) -> FilamentProfileResponse | None:
+    if filament.ams_setting_id:
+        profile = _find_profile_by_setting_id(profiles, filament.ams_setting_id)
+        if profile is not None:
+            return profile
+    return _find_profile_by_linked_id(profiles, filament.ams_filament_id or "")
+
+
 def _build_tray_profile_matches(
     trays: list[TrayStatus],
     profiles: list[FilamentProfileResponse],
@@ -138,7 +206,7 @@ def _build_tray_profile_matches(
         tray_filament_id = (tray.tray_info_idx or "").strip()
         if not tray_filament_id:
             continue
-        profile = _find_profile_by_linked_id(profiles, tray_filament_id)
+        profile = _find_profile_for_tray(profiles, tray)
         if profile:
             matches[tray.tray_index] = profile
     return matches
@@ -275,14 +343,6 @@ def _render_create_profile_modal(
         },
         headers=headers,
     )
-
-
-def _find_linked_profile(
-    profiles: list[FilamentProfileResponse],
-    filament: SpoolmanFilament,
-) -> FilamentProfileResponse | None:
-    return _find_profile_by_linked_id(profiles, filament.ams_filament_id or "")
-
 
 async def _render_filament_detail(
     request: Request,
@@ -682,6 +742,7 @@ async def link_filament(
             filament_id=filament_id,
             ams_filament_id=profile.filament_id,
             ams_filament_type=link_filament_type,
+            ams_setting_id=profile.setting_id,
         )
     except httpx.HTTPError as exc:
         raise HTTPException(status_code=502, detail=f"Failed to link filament: {exc}") from exc
@@ -885,7 +946,7 @@ async def assign_spool_to_tray(
         raise HTTPException(status_code=404, detail="Tray not found")
 
     profiles = request.app.state.orcaslicer.get_profiles()
-    profile = _find_profile_by_linked_id(profiles, linked_filament_id)
+    profile = _find_linked_profile(profiles, filament)
     if not profile:
         raise HTTPException(
             status_code=400,
@@ -896,13 +957,16 @@ async def assign_spool_to_tray(
         raise HTTPException(status_code=400, detail="Linked profile missing filament_id")
 
     mqtt = request.app.state.mqtt
+    activation_filament_type = _resolve_link_filament_type(profile, filament)
+    if not activation_filament_type:
+        raise HTTPException(status_code=400, detail="Linked profile missing filament_type")
     success, message = mqtt.activate_filament(
         tray=tray_index,
         tray_info_idx=ams_payload_filament_id,
         color_hex=filament.color_hex or "FFFFFF",
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
-        filament_type=profile.filament_type,
+        filament_type=activation_filament_type,
         tag_uid=tray.tag_uid or None,
         bed_temp=profile.bed_temp_min,
         tray_weight=tray.tray_weight if tray.tray_weight > 0 else None,
@@ -928,7 +992,7 @@ async def assign_spool_to_tray(
         {
             "request": request,
             "tray": tray,
-            "matched_profile": _find_profile_by_linked_id(profiles, tray.tray_info_idx),
+            "matched_profile": profile,
             "spools": linked_spools,
             "assign_success": f"Assigned {spool.display_name} to {tray.label}",
         },
