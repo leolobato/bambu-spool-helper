@@ -45,21 +45,7 @@
           </form>
           <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'filaments' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/?machine={{ machine_id }}">Filaments</a>
           <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'trays' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/trays?machine={{ machine_id }}">AMS Trays</a>
-          <button
-            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-            hx-get="/web/import-profile?machine={{ machine_id }}"
-            hx-target="#modal"
-            hx-swap="innerHTML"
-          >
-            Import Profile
-          </button>
-          <button
-            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-            hx-post="/reload?machine={{ machine_id }}"
-            hx-swap="none"
-          >
-            Reload Profiles
-          </button>
+          <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'settings' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/settings?machine={{ machine_id }}">Settings</a>
         </div>
       </header>
 

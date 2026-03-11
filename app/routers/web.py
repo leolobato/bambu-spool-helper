@@ -272,6 +272,38 @@ def _build_tray_profile_matches(
     return matches
 
 
+def _build_linked_profile_validation(
+    filaments: list[SpoolmanFilament],
+    profiles: list[FilamentProfileResponse],
+) -> dict[str, Any]:
+    linked_filaments = [filament for filament in filaments if filament.is_linked]
+    matched: list[dict[str, Any]] = []
+    missing: list[dict[str, Any]] = []
+
+    for filament in linked_filaments:
+        profile = _find_linked_profile(profiles, filament)
+        item = {
+            "filament": filament,
+            "linked_filament_id": (filament.ams_filament_id or "").strip(),
+            "linked_filament_type": (filament.ams_filament_type or "").strip(),
+        }
+        if profile is None:
+            missing.append(item)
+            continue
+        matched.append({
+            **item,
+            "profile": profile,
+        })
+
+    return {
+        "linked_count": len(linked_filaments),
+        "matched_count": len(matched),
+        "missing_count": len(missing),
+        "matched": matched,
+        "missing": missing,
+    }
+
+
 def _filter_filaments(filaments: list[SpoolmanFilament], filter_mode: str, search: str) -> list[SpoolmanFilament]:
     filtered = filaments
     if filter_mode == "linked":
@@ -479,6 +511,40 @@ def _render_import_profile_modal(
     )
 
 
+def _render_settings_action_result(
+    request: Request,
+    *,
+    success_message: str = "",
+    error_message: str = "",
+    reload_summary: dict[str, Any] | None = None,
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "partials/settings_action_result.html",
+        {
+            "request": request,
+            "success_message": success_message,
+            "error_message": error_message,
+            "reload_summary": reload_summary or {},
+        },
+    )
+
+
+def _render_settings_validation_result(
+    request: Request,
+    *,
+    validation: dict[str, Any] | None = None,
+    error_message: str = "",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "partials/settings_validation_result.html",
+        {
+            "request": request,
+            "validation": validation,
+            "error_message": error_message,
+        },
+    )
+
+
 @router.get("/")
 async def index(
     request: Request,
@@ -533,6 +599,68 @@ async def import_profile_modal(
 ) -> HTMLResponse:
     _, machine_id = await _machine_context(request, machine)
     return _render_import_profile_modal(request, machine_id=machine_id)
+
+
+@router.get("/settings")
+async def settings_page(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
+    machine_options, machine_id = await _machine_context(request, machine)
+    return templates.TemplateResponse(
+        "settings.html",
+        {
+            "request": request,
+            "machine_options": machine_options,
+            "machine_id": machine_id,
+            "active_page": "settings",
+        },
+    )
+
+
+@router.post("/settings/reload-profiles")
+async def settings_reload_profiles(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
+    _, machine_id = await _machine_context(request, machine)
+    try:
+        reload_summary, profiles = await request.app.state.orcaslicer.reload_profiles(machine_id)
+    except httpx.HTTPError as exc:
+        return _render_settings_action_result(
+            request,
+            error_message=f"Reload failed: {exc}",
+        )
+
+    success_message = f"Reloaded {len(profiles)} profiles for {machine_id}."
+    return _render_settings_action_result(
+        request,
+        success_message=success_message,
+        reload_summary=reload_summary,
+    )
+
+
+@router.post("/settings/validate-profiles")
+async def settings_validate_profiles(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
+    _, machine_id = await _machine_context(request, machine)
+    filaments, error = await _load_filaments(request)
+    if error:
+        return _render_settings_validation_result(request, error_message=error)
+
+    try:
+        profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
+    except httpx.HTTPError as exc:
+        return _render_settings_validation_result(
+            request,
+            error_message=f"Failed to load OrcaSlicer profiles: {exc}",
+        )
+
+    validation = _build_linked_profile_validation(filaments, profiles)
+    validation["machine_id"] = machine_id
+    return _render_settings_validation_result(request, validation=validation)
 
 
 @router.post("/import-profile")

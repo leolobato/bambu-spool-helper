@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="grid gap-4 lg:grid-cols-2">
+  <section class="rounded-xl border border-slate-800 bg-panel p-5">
+    <h2 class="text-lg font-semibold tracking-tight">Profile Management</h2>
+    <p class="mt-1 text-sm text-slate-400">Import new OrcaSlicer profiles or reload the profile cache for the selected machine.</p>
+
+    <div class="mt-4 flex flex-wrap gap-2">
+      <button
+        class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+        hx-get="/web/import-profile?machine={{ machine_id }}"
+        hx-target="#modal"
+        hx-swap="innerHTML"
+      >
+        Import Profile
+      </button>
+      <button
+        class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+        hx-post="/web/settings/reload-profiles?machine={{ machine_id }}"
+        hx-target="#settings-action-result"
+        hx-swap="innerHTML"
+      >
+        Reload Profiles
+      </button>
+    </div>
+
+    <div id="settings-action-result" class="mt-4">
+      {% include "partials/settings_action_result.html" %}
+    </div>
+  </section>
+
+  <section class="rounded-xl border border-slate-800 bg-panel p-5">
+    <h2 class="text-lg font-semibold tracking-tight">Profile Validation</h2>
+    <p class="mt-1 text-sm text-slate-400">Check every linked Spoolman filament against OrcaSlicer profiles for <span class="font-mono text-slate-300">{{ machine_id }}</span>.</p>
+
+    <div class="mt-4">
+      <button
+        class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+        hx-post="/web/settings/validate-profiles?machine={{ machine_id }}"
+        hx-target="#settings-validation-result"
+        hx-swap="innerHTML"
+      >
+        Validate Profiles
+      </button>
+    </div>
+
+    <div id="settings-validation-result" class="mt-4">
+      {% include "partials/settings_validation_result.html" %}
+    </div>
+  </section>
+</div>
+{% endblock %}

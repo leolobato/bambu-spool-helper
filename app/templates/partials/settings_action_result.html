@@ -1,0 +1,23 @@
+{% if error_message %}
+  <div class="rounded-md border border-rose-700/60 bg-rose-900/30 p-3 text-sm text-rose-100">
+    {{ error_message }}
+  </div>
+{% elif success_message %}
+  <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm text-emerald-100">
+    <div>{{ success_message }}</div>
+    {% if reload_summary %}
+      <dl class="mt-2 space-y-1 text-xs text-emerald-100/80">
+        {% for key, value in reload_summary.items() %}
+          <div class="flex gap-2">
+            <dt class="w-28 shrink-0 text-emerald-200/70">{{ key }}</dt>
+            <dd>{{ value }}</dd>
+          </div>
+        {% endfor %}
+      </dl>
+    {% endif %}
+  </div>
+{% else %}
+  <div class="rounded-md border border-dashed border-slate-700 p-3 text-sm text-slate-400">
+    No profile action has been run yet.
+  </div>
+{% endif %}
