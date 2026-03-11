@@ -318,7 +318,11 @@ def _filter_filaments(filaments: list[SpoolmanFilament], filter_mode: str, searc
     return [
         filament
         for filament in filtered
-        if term in filament.display_name.lower() or term in (filament.material or "").lower()
+        if (
+            term in filament.display_name.lower()
+            or term in (filament.material or "").lower()
+            or term in (filament.ams_filament_id or "").lower()
+        )
     ]
 
 
@@ -1122,6 +1126,25 @@ def _build_tray_statuses(request: Request) -> list[TrayStatus]:
     return statuses
 
 
+def _apply_assignment_to_tray_view(
+    tray: TrayStatus,
+    spool: SpoolmanSpool,
+    profile: FilamentProfileResponse,
+    filament_type: str,
+) -> TrayStatus:
+    color_hex = (spool.filament.color_hex or "").lstrip("#").upper()
+    return tray.model_copy(
+        update={
+            "tray_info_idx": (profile.filament_id or "").strip(),
+            "tray_type": filament_type,
+            "tray_color": color_hex[:6] if len(color_hex) >= 6 else tray.tray_color,
+            "nozzle_temp_min": profile.nozzle_temp_min,
+            "nozzle_temp_max": profile.nozzle_temp_max,
+            "bed_temp": profile.bed_temp_min,
+        }
+    )
+
+
 def _sort_spools(spools: list[SpoolmanSpool]) -> list[SpoolmanSpool]:
     return sorted(
         spools,
@@ -1333,6 +1356,7 @@ async def assign_spool_to_tray(
     tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
     if tray is None:
         raise HTTPException(status_code=404, detail="Tray not found")
+    tray = _apply_assignment_to_tray_view(tray, spool, profile, activation_filament_type)
 
     return templates.TemplateResponse(
         "partials/tray_card.html",

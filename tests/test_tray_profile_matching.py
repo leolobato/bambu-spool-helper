@@ -1,7 +1,13 @@
 import unittest
 
-from app.models import FilamentProfileResponse, SpoolmanFilament, TrayStatus
-from app.routers.web import _build_tray_profile_matches, _find_linked_profile, _resolve_link_filament_type
+from app.models import FilamentProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
+from app.routers.web import (
+    _apply_assignment_to_tray_view,
+    _build_tray_profile_matches,
+    _filter_filaments,
+    _find_linked_profile,
+    _resolve_link_filament_type,
+)
 
 
 class TrayProfileMatchingTests(unittest.TestCase):
@@ -167,6 +173,80 @@ class TrayProfileMatchingTests(unittest.TestCase):
         resolved = _resolve_link_filament_type(profile, filament)
 
         self.assertEqual(resolved, "PLA")
+
+    def test_filter_filaments_matches_linked_filament_id(self) -> None:
+        filaments = [
+            SpoolmanFilament(
+                id=4,
+                name="Black PLA",
+                material="PLA",
+                extra={
+                    "ams_filament_id": '"GFSNL04"',
+                    "ams_filament_type": '"PLA"',
+                },
+            ),
+            SpoolmanFilament(
+                id=5,
+                name="White PETG",
+                material="PETG",
+                extra={
+                    "ams_filament_id": '"GFSPETG01"',
+                    "ams_filament_type": '"PETG"',
+                },
+            ),
+        ]
+
+        filtered = _filter_filaments(filaments, "all", "gfsnl04")
+
+        self.assertEqual([filament.id for filament in filtered], [4])
+
+    def test_apply_assignment_to_tray_view_updates_filament_id_immediately(self) -> None:
+        tray = TrayStatus(
+            tray_index=0,
+            tray_type="PLA",
+            tray_info_idx="OLD01",
+            tray_color="FFFFFF",
+            nozzle_temp_min=190,
+            nozzle_temp_max=220,
+            bed_temp=55,
+        )
+        spool = SpoolmanSpool(
+            id=7,
+            filament=SpoolmanFilament(
+                id=11,
+                name="Black PLA",
+                material="PLA",
+                color_hex="000000",
+                extra={
+                    "ams_filament_id": '"GFSNL04"',
+                    "ams_filament_type": '"PLA"',
+                },
+            ),
+        )
+        profile = FilamentProfileResponse(
+            name="SUNLU PLA",
+            filament_id="GFSNL04",
+            setting_id="sunlu-pla",
+            filament_type="PLA",
+            nozzle_temp_min=220,
+            nozzle_temp_max=230,
+            bed_temp_min=65,
+            bed_temp_max=65,
+            drying_temp_min=0,
+            drying_temp_max=0,
+            drying_time=0,
+            print_speed_min=0,
+            print_speed_max=0,
+        )
+
+        updated_tray = _apply_assignment_to_tray_view(tray, spool, profile, "PLA")
+
+        self.assertEqual(updated_tray.tray_info_idx, "GFSNL04")
+        self.assertEqual(updated_tray.tray_type, "PLA")
+        self.assertEqual(updated_tray.tray_color, "000000")
+        self.assertEqual(updated_tray.nozzle_temp_min, 220)
+        self.assertEqual(updated_tray.nozzle_temp_max, 230)
+        self.assertEqual(updated_tray.bed_temp, 65)
 
 
 if __name__ == "__main__":
