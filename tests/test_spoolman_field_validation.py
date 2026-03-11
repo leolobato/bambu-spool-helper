@@ -1,4 +1,5 @@
 import unittest
+from unittest.mock import AsyncMock
 
 from app.services.spoolman import SpoolmanClient
 
@@ -37,6 +38,65 @@ class SpoolmanFieldValidationTests(unittest.TestCase):
         self.assertIn("nozzle_temp", invalid_by_key)
         self.assertIn("ams_filament_type", invalid_by_key)
         self.assertEqual({item["key"] for item in validation["missing"]}, {"printing_speed", "ams_filament_id"})
+
+    def test_merge_extra_fields_preserves_existing_values(self) -> None:
+        merged = SpoolmanClient._merge_extra_fields(
+            {
+                "ams_filament_id": '"GFSNL04"',
+                "ams_filament_type": '"PLA"',
+                "vendor_url": '"https://example.com"',
+            },
+            {
+                "nozzle_temp": "[220,230]",
+                "bed_temp": "[65,65]",
+                "printing_speed": "[18,25]",
+            },
+        )
+
+        self.assertEqual(merged["ams_filament_id"], '"GFSNL04"')
+        self.assertEqual(merged["ams_filament_type"], '"PLA"')
+        self.assertEqual(merged["vendor_url"], '"https://example.com"')
+        self.assertEqual(merged["nozzle_temp"], "[220,230]")
+        self.assertEqual(merged["bed_temp"], "[65,65]")
+        self.assertEqual(merged["printing_speed"], "[18,25]")
+
+    def test_update_filament_profile_fields_uses_spoolman_settings_keys_for_basic_fields(self) -> None:
+        client = SpoolmanClient("http://example.com")
+        client.ensure_required_filament_fields = AsyncMock(return_value={"validation": {"invalid_count": 0}})
+        client._patch_filament = AsyncMock()
+
+        try:
+            result = self._run_async(
+                client.update_filament_profile_fields(
+                    7,
+                    extruder_temp=225,
+                    nozzle_temp=(220, 230),
+                    bed_temp=(65, 65),
+                    printing_speed=(18, 25),
+                    basic_bed_temp=65,
+                )
+            )
+        finally:
+            self._run_async(client.close())
+
+        self.assertEqual(result, {"validation": {"invalid_count": 0}})
+        client._patch_filament.assert_awaited_once_with(
+            7,
+            extra_fields={
+                "nozzle_temp": "[220, 230]",
+                "bed_temp": "[65, 65]",
+                "printing_speed": "[18, 25]",
+            },
+            basic_fields={
+                "settings_extruder_temp": 225,
+                "settings_bed_temp": 65,
+            },
+        )
+
+    def _run_async(self, coro):
+        import asyncio
+
+        return asyncio.run(coro)
 
 
 if __name__ == "__main__":

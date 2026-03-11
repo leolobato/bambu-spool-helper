@@ -146,10 +146,58 @@ class SpoolmanClient:
             },
         )
 
-    async def _patch_filament(self, filament_id: int, extra_fields: dict[str, str]) -> None:
+    async def update_filament_profile_fields(
+        self,
+        filament_id: int,
+        *,
+        extruder_temp: int | None = None,
+        nozzle_temp: tuple[int, int],
+        bed_temp: tuple[int, int],
+        printing_speed: tuple[int, int],
+        basic_bed_temp: int,
+    ) -> dict[str, Any]:
+        validation_result = await self.ensure_required_filament_fields()
+        validation = validation_result["validation"]
+        if validation["invalid_count"] > 0:
+            invalid_keys = ", ".join(item["expected"]["key"] for item in validation["invalid"])
+            raise ValueError(
+                f"Spoolman filament fields have invalid definitions: {invalid_keys}. "
+                "Fix them in Settings before updating profile fields."
+            )
+
+        basic_fields: dict[str, Any] = {
+            "settings_bed_temp": int(basic_bed_temp),
+        }
+        if extruder_temp is not None:
+            basic_fields["settings_extruder_temp"] = int(extruder_temp)
+
+        await self._patch_filament(
+            filament_id,
+            extra_fields={
+                "nozzle_temp": self._json_encode_range(nozzle_temp),
+                "bed_temp": self._json_encode_range(bed_temp),
+                "printing_speed": self._json_encode_range(printing_speed),
+            },
+            basic_fields=basic_fields,
+        )
+        return validation_result
+
+    async def _patch_filament(
+        self,
+        filament_id: int,
+        extra_fields: dict[str, str] | None = None,
+        basic_fields: dict[str, Any] | None = None,
+    ) -> None:
+        payload: dict[str, Any] = {}
+        if extra_fields is not None:
+            current_filament = await self.get_filament(filament_id)
+            payload["extra"] = self._merge_extra_fields(current_filament.extra, extra_fields)
+        if basic_fields:
+            payload.update(basic_fields)
+
         response = await self._client.patch(
             f"/api/v1/filament/{filament_id}",
-            json={"extra": extra_fields},
+            json=payload,
         )
         if response.status_code not in (200, 204):
             response.raise_for_status()
@@ -231,3 +279,14 @@ class SpoolmanClient:
     @staticmethod
     def _json_encode(value: str) -> str:
         return json.dumps(value)
+
+    @staticmethod
+    def _json_encode_range(values: tuple[int, int]) -> str:
+        low, high = sorted((int(values[0]), int(values[1])))
+        return json.dumps([low, high])
+
+    @staticmethod
+    def _merge_extra_fields(existing: dict[str, str], updates: dict[str, str]) -> dict[str, str]:
+        merged = dict(existing or {})
+        merged.update(updates)
+        return merged

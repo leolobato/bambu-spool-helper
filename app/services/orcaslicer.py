@@ -166,6 +166,8 @@ class OrcaSlicerClient:
 
     @staticmethod
     def _build_profile(summary: dict[str, Any], detail: dict[str, Any]) -> FilamentProfileResponse:
+        extruder_temp = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature")
+        extruder_temp_initial_layer = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature_initial_layer")
         nozzle_temp_min = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature_range_low")
         nozzle_temp_max = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature_range_high")
 
@@ -201,6 +203,8 @@ class OrcaSlicerClient:
                 or OrcaSlicerClient._extract_profile_id(detail)
             ),
             filament_type=filament_type,
+            extruder_temp=extruder_temp or None,
+            extruder_temp_initial_layer=extruder_temp_initial_layer or None,
             nozzle_temp_min=nozzle_temp_min,
             nozzle_temp_max=nozzle_temp_max,
             bed_temp_min=bed_temp,

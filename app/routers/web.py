@@ -304,6 +304,158 @@ def _build_linked_profile_validation(
     }
 
 
+def _range_changed(
+    current: tuple[int | None, int | None],
+    target: tuple[int, int],
+) -> bool:
+    normalized_current = _normalize_optional_range(current)
+    normalized_target = _normalize_required_range(target)
+    return normalized_current != normalized_target
+
+
+def _normalize_optional_range(
+    values: tuple[int | None, int | None],
+) -> tuple[int | None, int | None]:
+    low, high = values
+    if low is None or high is None:
+        return low, high
+    if low <= high:
+        return low, high
+    return high, low
+
+
+def _normalize_required_range(values: tuple[int, int]) -> tuple[int, int]:
+    low, high = values
+    if low <= high:
+        return low, high
+    return high, low
+
+
+def _format_range_label(low: int | None, high: int | None, unit: str = "") -> str:
+    low, high = _normalize_optional_range((low, high))
+    if low is None and high is None:
+        return "-"
+
+    values = [value for value in (low, high) if value is not None]
+    if not values:
+        return "-"
+
+    suffix = f" {unit}" if unit else ""
+    if len(values) == 1 or values[0] == values[-1]:
+        return f"{values[0]}{suffix}"
+    return f"{values[0]}-{values[-1]}{suffix}"
+
+
+def _build_profile_field_sync(
+    filament: SpoolmanFilament,
+    profile: FilamentProfileResponse | None,
+) -> dict[str, Any] | None:
+    if profile is None:
+        return None
+
+    current_nozzle = _decode_extra_range(filament.extra or {}, "nozzle_temp")
+    current_bed = _decode_extra_range(filament.extra or {}, "bed_temp")
+    current_speed = _decode_extra_range(filament.extra or {}, "printing_speed")
+
+    current_nozzle = _normalize_optional_range(current_nozzle)
+    current_bed = _normalize_optional_range(current_bed)
+    current_speed = _normalize_optional_range(current_speed)
+
+    target_nozzle = _normalize_required_range((profile.nozzle_temp_min, profile.nozzle_temp_max))
+    target_bed = _normalize_required_range((profile.bed_temp_min, profile.bed_temp_max))
+    target_speed = _normalize_required_range((profile.print_speed_min, profile.print_speed_max))
+    target_extruder_temp = profile.extruder_temp
+    target_extruder_temp_initial_layer = profile.extruder_temp_initial_layer
+    current_extruder_temp = filament.extruder_temp
+    current_basic_bed_temp = filament.bed_temp
+    target_basic_bed_temp = profile.bed_temp_min
+
+    custom_fields = [
+        {
+            "label": "Nozzle Temp",
+            "key": "nozzle_temp",
+            "current": current_nozzle,
+            "target": target_nozzle,
+            "current_label": _format_range_label(*current_nozzle, unit="°C"),
+            "target_label": _format_range_label(*target_nozzle, unit="°C"),
+            "changed": _range_changed(current_nozzle, target_nozzle),
+            "source_fields": ["nozzle_temperature_range_low", "nozzle_temperature_range_high"],
+            "source_label": "nozzle_temperature_range_low + nozzle_temperature_range_high",
+        },
+        {
+            "label": "Bed Temp",
+            "key": "bed_temp",
+            "current": current_bed,
+            "target": target_bed,
+            "current_label": _format_range_label(*current_bed, unit="°C"),
+            "target_label": _format_range_label(*target_bed, unit="°C"),
+            "changed": _range_changed(current_bed, target_bed),
+            "source_fields": ["hot_plate_temp"],
+            "source_label": "hot_plate_temp",
+        },
+        {
+            "label": "Printing Speed",
+            "key": "printing_speed",
+            "current": current_speed,
+            "target": target_speed,
+            "current_label": _format_range_label(*current_speed, unit="mm/s"),
+            "target_label": _format_range_label(*target_speed, unit="mm/s"),
+            "changed": _range_changed(current_speed, target_speed),
+            "source_fields": ["slow_down_min_speed", "filament_max_volumetric_speed"],
+            "source_label": "slow_down_min_speed + filament_max_volumetric_speed",
+        },
+    ]
+    basic_fields = []
+    if target_extruder_temp is not None:
+        target_extruder_label = f"{target_extruder_temp} °C"
+        note = ""
+        if (
+            target_extruder_temp_initial_layer is not None
+            and target_extruder_temp_initial_layer != target_extruder_temp
+        ):
+            note = f" (initial layer {target_extruder_temp_initial_layer} °C)"
+            target_extruder_label += note
+        basic_fields.append(
+            {
+                "label": "Settings Extruder Temp",
+                "key": "extruder_temp",
+                "current": current_extruder_temp,
+                "current_label": "-" if current_extruder_temp is None else f"{current_extruder_temp} °C",
+                "target": target_extruder_temp,
+                "target_label": target_extruder_label,
+                "changed": current_extruder_temp != target_extruder_temp,
+                "note": note,
+                "source_fields": ["nozzle_temperature", "nozzle_temperature_initial_layer"],
+                "source_label": "nozzle_temperature"
+                if not note
+                else "nozzle_temperature + nozzle_temperature_initial_layer",
+            }
+        )
+    basic_fields.append(
+        {
+            "label": "Settings Bed Temp",
+            "key": "bed_temp_basic",
+            "current": current_basic_bed_temp,
+            "current_label": "-" if current_basic_bed_temp is None else f"{current_basic_bed_temp} °C",
+            "target": target_basic_bed_temp,
+            "target_label": f"{target_basic_bed_temp} °C",
+            "changed": current_basic_bed_temp != target_basic_bed_temp,
+            "source_fields": ["hot_plate_temp"],
+            "source_label": "hot_plate_temp",
+        }
+    )
+
+    return {
+        "custom_fields": custom_fields,
+        "basic_fields": basic_fields,
+        "has_changes": any(field["changed"] for field in custom_fields + basic_fields),
+        "target_nozzle": target_nozzle,
+        "target_bed": target_bed,
+        "target_speed": target_speed,
+        "target_basic_bed_temp": target_basic_bed_temp,
+    }
+
+
 def _filter_filaments(filaments: list[SpoolmanFilament], filter_mode: str, search: str) -> list[SpoolmanFilament]:
     filtered = filaments
     if filter_mode == "linked":
@@ -448,11 +600,19 @@ async def _render_filament_detail(
     filament_id: int,
     machine_id: str,
     profile_search: str = "",
+    success_message: str = "",
+    action_error: str = "",
 ) -> HTMLResponse:
-    filaments, error = await _load_filaments(request)
-    filament = next((item for item in filaments if item.id == filament_id), None)
-    if filament is None:
-        raise HTTPException(status_code=404, detail="Filament not found")
+    error = ""
+    try:
+        filament = await request.app.state.spoolman.get_filament(filament_id)
+    except httpx.HTTPError as exc:
+        logger.warning("Failed to fetch filament %s from Spoolman detail endpoint: %s", filament_id, exc)
+        filaments, list_error = await _load_filaments(request)
+        filament = next((item for item in filaments if item.id == filament_id), None)
+        error = list_error or f"Spoolman request failed: {exc}"
+        if filament is None:
+            raise HTTPException(status_code=404, detail="Filament not found")
 
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     linked_profile = _find_linked_profile(profiles, filament)
@@ -462,6 +622,7 @@ async def _render_filament_detail(
         profile.setting_id: _resolve_link_filament_type(profile, filament)
         for profile in filtered_profiles
     }
+    profile_field_sync = _build_profile_field_sync(filament, linked_profile)
 
     return templates.TemplateResponse(
         "partials/filament_detail.html",
@@ -480,6 +641,9 @@ async def _render_filament_detail(
             "link_filament_type_by_setting_id": link_filament_type_by_setting_id,
             "linked_profile": linked_profile,
             "error": error,
+            "success_message": success_message,
+            "action_error": action_error,
+            "profile_field_sync": profile_field_sync,
         },
     )
 
@@ -1150,6 +1314,83 @@ async def unlink_filament(
 
     _, machine_id = await _machine_context(request, machine)
     return await _render_filament_detail(request, filament_id, machine_id)
+
+
+@router.post("/sync-profile-fields/{filament_id}")
+async def sync_profile_fields(
+    request: Request,
+    filament_id: int,
+    machine: str = Form(default=""),
+    profile_search: str = Form(default=""),
+) -> HTMLResponse:
+    _, machine_id = await _machine_context(request, machine)
+    try:
+        filament = await request.app.state.spoolman.get_filament(filament_id)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to load filament: {exc}") from exc
+
+    if not filament.is_linked:
+        return await _render_filament_detail(
+            request,
+            filament_id,
+            machine_id,
+            profile_search=profile_search,
+            action_error="Filament is not linked to an Orca profile.",
+        )
+
+    profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
+    linked_profile = _find_linked_profile(profiles, filament)
+    if linked_profile is None:
+        return await _render_filament_detail(
+            request,
+            filament_id,
+            machine_id,
+            profile_search=profile_search,
+            action_error="No Orca profile currently matches this linked filament.",
+        )
+
+    try:
+        result = await request.app.state.spoolman.update_filament_profile_fields(
+            filament_id,
+            extruder_temp=linked_profile.extruder_temp,
+            nozzle_temp=(linked_profile.nozzle_temp_min, linked_profile.nozzle_temp_max),
+            bed_temp=(linked_profile.bed_temp_min, linked_profile.bed_temp_max),
+            printing_speed=(linked_profile.print_speed_min, linked_profile.print_speed_max),
+            basic_bed_temp=linked_profile.bed_temp_min,
+        )
+    except ValueError as exc:
+        return await _render_filament_detail(
+            request,
+            filament_id,
+            machine_id,
+            profile_search=profile_search,
+            action_error=str(exc),
+        )
+    except httpx.HTTPError as exc:
+        return await _render_filament_detail(
+            request,
+            filament_id,
+            machine_id,
+            profile_search=profile_search,
+            action_error=f"Failed to update Spoolman profile fields: {exc}",
+        )
+
+    created_keys = result.get("created_keys", [])
+    created_suffix = f" Created missing fields: {', '.join(created_keys)}." if created_keys else ""
+    updated_basic_fields = ["settings_bed_temp"]
+    if linked_profile.extruder_temp is not None:
+        updated_basic_fields.insert(0, "settings_extruder_temp")
+    updated_basic_fields_label = ", ".join(updated_basic_fields)
+    return await _render_filament_detail(
+        request,
+        filament_id,
+        machine_id,
+        profile_search=profile_search,
+        success_message=(
+            f"Updated Spoolman {updated_basic_fields_label}, bed_temp, nozzle_temp, and printing_speed "
+            f"from the linked Orca profile.{created_suffix}"
+        ),
+    )
 
 
 def _build_tray_statuses(request: Request) -> list[TrayStatus]:

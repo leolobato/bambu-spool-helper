@@ -1,10 +1,14 @@
 import unittest
+from types import SimpleNamespace
+from unittest.mock import AsyncMock
 
-from app.models import FilamentProfileResponse
+from app.models import FilamentProfileResponse, SpoolmanFilament
 from app.routers.web import (
+    _build_profile_field_sync,
     _extract_payload_filament_type,
     _find_profile_by_linked_id,
     _find_profile_by_setting_id,
+    _render_filament_detail,
     _normalize_valid_filament_type,
     _set_payload_filament_type,
 )
@@ -65,6 +69,116 @@ class WebProfileSelectionTests(unittest.TestCase):
         self.assertEqual(matched_by_filament_id.setting_id, "broken-setting")
         self.assertEqual(matched_by_setting_id.setting_id, "correct-setting")
         self.assertEqual(matched_by_setting_id.filament_type, "PLA")
+
+    def test_build_profile_field_sync_compares_current_spoolman_values_to_linked_profile(self) -> None:
+        filament = SpoolmanFilament(
+            id=5,
+            name="Linked PLA",
+            material="PLA",
+            extruder_temp=210,
+            bed_temp=50,
+            extra={
+                "nozzle_temp": "[190,220]",
+                "bed_temp": "[55,55]",
+                "printing_speed": "[12,18]",
+            },
+        )
+        profile = FilamentProfileResponse(
+            name="PLA Match",
+            filament_id="GFSNL04",
+            setting_id="linked-setting",
+            filament_type="PLA",
+            extruder_temp=225,
+            extruder_temp_initial_layer=230,
+            nozzle_temp_min=220,
+            nozzle_temp_max=230,
+            bed_temp_min=65,
+            bed_temp_max=65,
+            drying_temp_min=0,
+            drying_temp_max=0,
+            drying_time=0,
+            print_speed_min=25,
+            print_speed_max=18,
+        )
+
+        sync = _build_profile_field_sync(filament, profile)
+
+        self.assertIsNotNone(sync)
+        assert sync is not None
+        self.assertTrue(sync["has_changes"])
+        custom_field_by_key = {field["key"]: field for field in sync["custom_fields"]}
+        basic_field_by_key = {field["key"]: field for field in sync["basic_fields"]}
+        self.assertEqual(custom_field_by_key["nozzle_temp"]["current"], (190, 220))
+        self.assertEqual(custom_field_by_key["nozzle_temp"]["target"], (220, 230))
+        self.assertEqual(custom_field_by_key["bed_temp"]["current_label"], "55 °C")
+        self.assertEqual(custom_field_by_key["printing_speed"]["target_label"], "18-25 mm/s")
+        self.assertEqual(custom_field_by_key["printing_speed"]["source_label"], "slow_down_min_speed + filament_max_volumetric_speed")
+        self.assertEqual(basic_field_by_key["extruder_temp"]["current_label"], "210 °C")
+        self.assertEqual(basic_field_by_key["extruder_temp"]["target"], 225)
+        self.assertEqual(basic_field_by_key["extruder_temp"]["target_label"], "225 °C (initial layer 230 °C)")
+        self.assertEqual(basic_field_by_key["extruder_temp"]["source_label"], "nozzle_temperature + nozzle_temperature_initial_layer")
+        self.assertEqual(basic_field_by_key["bed_temp_basic"]["current_label"], "50 °C")
+        self.assertEqual(basic_field_by_key["bed_temp_basic"]["target_label"], "65 °C")
+        self.assertEqual(basic_field_by_key["bed_temp_basic"]["source_label"], "hot_plate_temp")
+
+    def test_spoolman_filament_reads_settings_basic_fields_from_api_aliases(self) -> None:
+        filament = SpoolmanFilament.model_validate(
+            {
+                "id": 9,
+                "name": "Alias Test",
+                "settings_extruder_temp": 215,
+                "settings_bed_temp": 60,
+                "extra": {},
+            }
+        )
+
+        self.assertEqual(filament.extruder_temp, 215)
+        self.assertEqual(filament.bed_temp, 60)
+
+    def test_render_filament_detail_prefers_single_filament_fetch_for_latest_state(self) -> None:
+        filament = SpoolmanFilament(
+            id=5,
+            name="Linked PLA",
+            material="PLA",
+            extra={
+                "ams_filament_id": '"GFSNL04"',
+                "ams_filament_type": '"PLA"',
+            },
+        )
+        profile = FilamentProfileResponse(
+            name="PLA Match",
+            filament_id="GFSNL04",
+            setting_id="linked-setting",
+            filament_type="PLA",
+            extruder_temp=220,
+            nozzle_temp_min=220,
+            nozzle_temp_max=230,
+            bed_temp_min=65,
+            bed_temp_max=65,
+            drying_temp_min=0,
+            drying_temp_max=0,
+            drying_time=0,
+            print_speed_min=18,
+            print_speed_max=25,
+        )
+        request = SimpleNamespace(
+            app=SimpleNamespace(
+                state=SimpleNamespace(
+                    spoolman=SimpleNamespace(get_filament=AsyncMock(return_value=filament)),
+                    orcaslicer=SimpleNamespace(get_profiles=AsyncMock(return_value=[profile])),
+                )
+            )
+        )
+
+        response = self._run_async(_render_filament_detail(request, 5, "GM020"))
+
+        self.assertEqual(response.status_code, 200)
+        request.app.state.spoolman.get_filament.assert_awaited_once_with(5)
+
+    def _run_async(self, coro):
+        import asyncio
+
+        return asyncio.run(coro)
 
 
 if __name__ == "__main__":

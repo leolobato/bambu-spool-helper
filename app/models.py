@@ -57,6 +57,8 @@ class FilamentProfileResponse(BaseModel):
     filament_id: str
     setting_id: str
     filament_type: str
+    extruder_temp: int | None = None
+    extruder_temp_initial_layer: int | None = None
     nozzle_temp_min: int
     nozzle_temp_max: int
     bed_temp_min: int
@@ -161,11 +163,13 @@ class SpoolmanVendor(BaseModel):
 
 
 class SpoolmanFilament(BaseModel):
-    model_config = ConfigDict(extra="ignore")
+    model_config = ConfigDict(extra="ignore", populate_by_name=True)
 
     id: int
     name: str | None = None
     material: str | None = None
+    extruder_temp: int | None = Field(default=None, alias="settings_extruder_temp")
+    bed_temp: int | None = Field(default=None, alias="settings_bed_temp")
     color_hex: str | None = Field(default=None, alias="color_hex")
     vendor: SpoolmanVendor | None = None
     extra: dict[str, str] = Field(default_factory=dict)
