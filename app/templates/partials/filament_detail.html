@@ -39,15 +39,6 @@
       </div>
     </div>
 
-    <button
-      class="mt-4 rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
-      hx-get="/web/create-profile/{{ filament.id }}?machine={{ machine_id }}"
-      hx-target="#modal"
-      hx-swap="innerHTML"
-    >
-      Create Orca Profile from Spoolman Fields
-    </button>
-
     {% if filament.is_linked %}
       <div class="mt-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm">
         <div class="font-medium text-emerald-200">Linked Filament Mapping</div>
@@ -59,63 +50,78 @@
           <div class="mt-1 text-amber-200">No Orca profile currently matches this filament_id.</div>
         {% endif %}
       </div>
-      {% if linked_profile and profile_field_sync %}
-        <div class="mt-4 rounded-md border border-slate-700 bg-slate-950/30 p-3 text-sm">
-          <div class="font-medium text-slate-100">Sync Spoolman Profile Fields</div>
-          <div class="mt-1 text-xs text-slate-400">Update Spoolman custom fields from the linked Orca profile.</div>
+    {% endif %}
+    {% if linked_profile and profile_field_sync %}
+      <div class="mt-4 rounded-md border border-slate-700 bg-slate-950/30 p-3 text-sm">
+        <div class="font-medium text-slate-100">Sync Spoolman Profile Fields</div>
+        <div class="mt-1 text-xs text-slate-400">Update Spoolman custom fields from the linked Orca profile.</div>
 
-          <div class="mt-3 text-xs uppercase tracking-wide text-slate-500">Custom Fields</div>
-          <div class="mt-2 space-y-2">
-            {% for field in profile_field_sync.custom_fields %}
-              <div class="grid gap-2 rounded-md border border-slate-700/70 p-2 text-xs sm:grid-cols-[1fr_1fr_1fr]">
-                <div class="text-slate-200">{{ field.label }}</div>
-                <div>
-                  <div class="text-slate-500">Current</div>
-                  <div class="font-mono text-slate-200">{{ field.current_label }}</div>
-                </div>
-                <div>
-                  <div class="text-slate-500">Will Update To</div>
-                  <div class="font-mono {% if field.changed %}text-cyan-200{% else %}text-slate-200{% endif %}">{{ field.target_label }}</div>
-                  <div class="mt-1 text-slate-500">Source: <span class="font-mono text-slate-300">{{ field.source_label }}</span></div>
-                </div>
+        <div class="mt-3 text-xs uppercase tracking-wide text-slate-500">Custom Fields</div>
+        <div class="mt-2 space-y-2">
+          {% for field in profile_field_sync.custom_fields %}
+            <div class="grid gap-2 rounded-md border border-slate-700/70 p-2 text-xs sm:grid-cols-[1fr_1fr_1fr]">
+              <div class="text-slate-200">{{ field.label }}</div>
+              <div>
+                <div class="text-slate-500">Current</div>
+                <div class="font-mono text-slate-200">{{ field.current_label }}</div>
               </div>
-            {% endfor %}
-          </div>
-
-          <div class="mt-3 text-xs uppercase tracking-wide text-slate-500">Basic Fields</div>
-          <div class="mt-2 space-y-2">
-            {% for field in profile_field_sync.basic_fields %}
-              <div class="grid gap-2 rounded-md border border-slate-700/70 p-2 text-xs sm:grid-cols-[1fr_1fr_1fr]">
-                <div class="text-slate-200">{{ field.label }}</div>
-                <div>
-                  <div class="text-slate-500">Current</div>
-                  <div class="font-mono text-slate-200">{{ field.current_label }}</div>
-                </div>
-                <div>
-                  <div class="text-slate-500">Will Update To</div>
-                  <div class="font-mono {% if field.changed %}text-cyan-200{% else %}text-slate-200{% endif %}">{{ field.target_label }}</div>
-                  <div class="mt-1 text-slate-500">Source: <span class="font-mono text-slate-300">{{ field.source_label }}</span></div>
-                </div>
+              <div>
+                <div class="text-slate-500">Will Update To</div>
+                <div class="font-mono {% if field.changed %}text-cyan-200{% else %}text-slate-200{% endif %}">{{ field.target_label }}</div>
+                <div class="mt-1 text-slate-500">Source: <span class="font-mono text-slate-300">{{ field.source_label }}</span></div>
               </div>
-            {% endfor %}
-          </div>
-          <form
-            id="sync-profile-fields-form-{{ filament.id }}"
-            class="mt-3"
-            hx-post="/web/sync-profile-fields/{{ filament.id }}"
-            hx-target="#filament-detail"
-          >
-            <input type="hidden" name="machine" value="{{ machine_id }}" />
-            <input type="hidden" name="profile_search" value="{{ profile_search }}" />
-            <button
-              class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
-              type="submit"
-            >
-              Update Spoolman Fields
-            </button>
-          </form>
+            </div>
+          {% endfor %}
         </div>
-      {% endif %}
+
+        <div class="mt-3 text-xs uppercase tracking-wide text-slate-500">Basic Fields</div>
+        <div class="mt-2 space-y-2">
+          {% for field in profile_field_sync.basic_fields %}
+            <div class="grid gap-2 rounded-md border border-slate-700/70 p-2 text-xs sm:grid-cols-[1fr_1fr_1fr]">
+              <div class="text-slate-200">{{ field.label }}</div>
+              <div>
+                <div class="text-slate-500">Current</div>
+                <div class="font-mono text-slate-200">{{ field.current_label }}</div>
+              </div>
+              <div>
+                <div class="text-slate-500">Will Update To</div>
+                <div class="font-mono {% if field.changed %}text-cyan-200{% else %}text-slate-200{% endif %}">{{ field.target_label }}</div>
+                <div class="mt-1 text-slate-500">Source: <span class="font-mono text-slate-300">{{ field.source_label }}</span></div>
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+        <form
+          id="sync-profile-fields-form-{{ filament.id }}"
+          class="mt-3"
+          hx-post="/web/sync-profile-fields/{{ filament.id }}"
+          hx-target="#filament-detail"
+        >
+          <input type="hidden" name="machine" value="{{ machine_id }}" />
+          <input type="hidden" name="profile_search" value="{{ profile_search }}" />
+          <button
+            class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30 disabled:cursor-not-allowed disabled:border-slate-700 disabled:text-slate-500"
+            type="submit"
+          >
+            Update Spoolman Fields
+          </button>
+        </form>
+      </div>
+    {% else %}
+      <div class="mt-4 rounded-md border border-slate-700 bg-slate-950/30 p-3 text-sm">
+        <div class="font-medium text-slate-100">Spoolman Profile Fields</div>
+        <div class="mt-1 text-xs text-slate-400">No linked Orca profile is available for this filament yet. You can create one from the Spoolman values.</div>
+        <button
+          class="mt-3 rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+          hx-get="/web/create-profile/{{ filament.id }}?machine={{ machine_id }}"
+          hx-target="#modal"
+          hx-swap="innerHTML"
+        >
+          Create Orca Profile
+        </button>
+      </div>
+    {% endif %}
+    {% if filament.is_linked %}
       <button
         class="mt-4 rounded-md border border-rose-700 px-3 py-1.5 text-sm text-rose-200 hover:bg-rose-900/30"
         hx-post="/web/unlink/{{ filament.id }}"

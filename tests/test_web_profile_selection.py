@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 from app.models import FilamentProfileResponse, SpoolmanFilament
 from app.routers.web import (
+    _build_create_profile_field_mappings,
     _build_profile_field_sync,
     _extract_payload_filament_type,
     _find_profile_by_linked_id,
@@ -120,6 +121,24 @@ class WebProfileSelectionTests(unittest.TestCase):
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["current_label"], "50 °C")
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["target_label"], "65 °C")
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["source_label"], "hot_plate_temp")
+
+    def test_build_create_profile_field_mappings_describes_spoolman_to_orca_flow(self) -> None:
+        mappings = _build_create_profile_field_mappings(
+            filament_type="PLA",
+            nozzle_temp=(230, 190),
+            bed_temp=60,
+            printing_speed=(20, 18),
+        )
+
+        mapping_by_label = {item["label"]: item for item in mappings}
+        self.assertEqual(mapping_by_label["Nozzle Temperature Range"]["source_value"], "190-230 °C")
+        self.assertEqual(
+            mapping_by_label["Nozzle Temperature Range"]["target_fields"],
+            "nozzle_temperature_range_low + nozzle_temperature_range_high",
+        )
+        self.assertEqual(mapping_by_label["Bed Temperature"]["target_fields"], "hot_plate_temp")
+        self.assertEqual(mapping_by_label["Printing Speed Range"]["source_value"], "18-20 mm/s")
+        self.assertIn("approximation", mapping_by_label["Printing Speed Range"]["meaning"])
 
     def test_spoolman_filament_reads_settings_basic_fields_from_api_aliases(self) -> None:
         filament = SpoolmanFilament.model_validate(

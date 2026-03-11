@@ -456,6 +456,54 @@ def _build_profile_field_sync(
     }
 
 
+def _build_create_profile_field_mappings(
+    *,
+    filament_type: str,
+    nozzle_temp: tuple[int | None, int | None],
+    bed_temp: int | None,
+    printing_speed: tuple[int | None, int | None],
+) -> list[dict[str, str]]:
+    normalized_nozzle = _normalize_optional_range(nozzle_temp)
+    normalized_speed = _normalize_optional_range(printing_speed)
+    filament_type_label = filament_type or "-"
+    bed_temp_label = "-" if bed_temp is None else f"{bed_temp} °C"
+
+    return [
+        {
+            "label": "Filament Type",
+            "source_field": "ams_filament_type",
+            "source_value": filament_type_label,
+            "target_fields": "filament_type",
+            "target_description": "Material family used by Orca to classify the filament profile.",
+            "meaning": "This decides which filament class the new Orca profile belongs to.",
+        },
+        {
+            "label": "Nozzle Temperature Range",
+            "source_field": "nozzle_temp",
+            "source_value": _format_range_label(*normalized_nozzle, unit="°C"),
+            "target_fields": "nozzle_temperature_range_low + nozzle_temperature_range_high",
+            "target_description": "Supported nozzle temperature window for the profile.",
+            "meaning": "Orca uses these as the lower and upper extrusion temperature limits.",
+        },
+        {
+            "label": "Bed Temperature",
+            "source_field": "bed_temp",
+            "source_value": bed_temp_label,
+            "target_fields": "hot_plate_temp",
+            "target_description": "Target build-plate temperature.",
+            "meaning": "This is the bed temperature Orca will store on the filament profile.",
+        },
+        {
+            "label": "Printing Speed Range",
+            "source_field": "printing_speed",
+            "source_value": _format_range_label(*normalized_speed, unit="mm/s"),
+            "target_fields": "slow_down_min_speed + filament_max_volumetric_speed",
+            "target_description": "Low/high speed values used to seed Orca's speed-related limits.",
+            "meaning": "This is an approximation: the low value maps to slowdown speed, the high value maps to max volumetric speed.",
+        },
+    ]
+
+
 def _filter_filaments(filaments: list[SpoolmanFilament], filter_mode: str, search: str) -> list[SpoolmanFilament]:
     filtered = filaments
     if filter_mode == "linked":
@@ -588,6 +636,12 @@ def _render_create_profile_modal(
             "bed_temp": bed_temp,
             "print_speed_min": print_speed_min,
             "print_speed_max": print_speed_max,
+            "field_mappings": _build_create_profile_field_mappings(
+                filament_type=filament_type,
+                nozzle_temp=(nozzle_temp_min, nozzle_temp_max),
+                bed_temp=bed_temp,
+                printing_speed=(print_speed_min, print_speed_max),
+            ),
             "error_message": error_message,
             "success_message": success_message,
             "import_result": import_result or {},
@@ -747,12 +801,22 @@ async def index(
     filtered_filaments = _filter_filaments(filaments, filter_mode, search)
 
     selected_filament = filtered_filaments[0] if filtered_filaments else None
+    detail_error = ""
+    if selected_filament is not None:
+        try:
+            selected_filament = await request.app.state.spoolman.get_filament(selected_filament.id)
+        except httpx.HTTPError as exc:
+            logger.warning("Failed to fetch initial filament %s from Spoolman detail endpoint: %s", selected_filament.id, exc)
+            selected_filament = None
+            detail_error = f"Spoolman request failed: {exc}"
+
     linked_profile = _find_linked_profile(profiles, selected_filament) if selected_filament else None
     selected_filament_type = _normalize_valid_filament_type(selected_filament.ams_filament_type or "") if selected_filament else ""
     link_filament_type_by_setting_id = {
         profile.setting_id: _resolve_link_filament_type(profile, selected_filament)
         for profile in profiles
     } if selected_filament else {}
+    profile_field_sync = _build_profile_field_sync(selected_filament, linked_profile) if selected_filament else None
 
     return templates.TemplateResponse(
         "index.html",
@@ -776,6 +840,10 @@ async def index(
             "valid_filament_types": sorted(VALID_TRAY_TYPES),
             "link_filament_type_by_setting_id": link_filament_type_by_setting_id,
             "linked_profile": linked_profile,
+            "profile_field_sync": profile_field_sync,
+            "success_message": "",
+            "action_error": "",
+            "detail_error": detail_error,
             "active_page": "filaments",
         },
     )
@@ -1044,9 +1112,9 @@ async def create_profile_modal(
         inferred_filament_type = _normalize_valid_filament_type(preferred_base.filament_type)
 
     extra = filament.extra or {}
-    nozzle_min, nozzle_max = _decode_extra_range(extra, "nozzle_temp")
+    nozzle_min, nozzle_max = _normalize_optional_range(_decode_extra_range(extra, "nozzle_temp"))
     bed_min, bed_max = _decode_extra_range(extra, "bed_temp")
-    print_speed_min, print_speed_max = _decode_extra_range(extra, "printing_speed")
+    print_speed_min, print_speed_max = _normalize_optional_range(_decode_extra_range(extra, "printing_speed"))
     bed_temp = bed_min if bed_min is not None else bed_max
 
     return _render_create_profile_modal(
