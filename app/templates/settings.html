@@ -1,7 +1,8 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="grid gap-4 lg:grid-cols-2">
+<div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+  <div class="space-y-4">
   <section class="rounded-xl border border-slate-800 bg-panel p-5">
     <h2 class="text-lg font-semibold tracking-tight">Profile Management</h2>
     <p class="mt-1 text-sm text-slate-400">Import new OrcaSlicer profiles or reload the profile cache for the selected machine.</p>
@@ -47,6 +48,13 @@
 
     <div id="settings-validation-result" class="mt-4">
       {% include "partials/settings_validation_result.html" %}
+    </div>
+  </section>
+  </div>
+
+  <section id="filament-detail" class="min-h-[24rem] rounded-xl border border-slate-800 bg-panel p-4">
+    <div class="rounded-lg border border-dashed border-slate-700 p-6 text-sm text-slate-400">
+      Select an invalid linked filament from Profile Validation to open the same detail panel used in the Filaments tab.
     </div>
   </section>
 </div>
