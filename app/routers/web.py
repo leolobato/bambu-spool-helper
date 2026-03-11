@@ -549,6 +549,27 @@ def _render_settings_validation_result(
     )
 
 
+def _render_settings_spoolman_result(
+    request: Request,
+    *,
+    validation: dict[str, Any] | None = None,
+    created_keys: list[str] | None = None,
+    errors: list[str] | None = None,
+    error_message: str = "",
+) -> HTMLResponse:
+    return templates.TemplateResponse(
+        "partials/settings_spoolman_result.html",
+        {
+            "request": request,
+            "expected_fields": request.app.state.spoolman.REQUIRED_SETTINGS_FILAMENT_FIELDS,
+            "validation": validation,
+            "created_keys": created_keys or [],
+            "errors": errors or [],
+            "error_message": error_message,
+        },
+    )
+
+
 @router.get("/")
 async def index(
     request: Request,
@@ -618,6 +639,7 @@ async def settings_page(
             "machine_options": machine_options,
             "machine_id": machine_id,
             "active_page": "settings",
+            "expected_fields": request.app.state.spoolman.REQUIRED_SETTINGS_FILAMENT_FIELDS,
         },
     )
 
@@ -665,6 +687,39 @@ async def settings_validate_profiles(
     validation = _build_linked_profile_validation(filaments, profiles)
     validation["machine_id"] = machine_id
     return _render_settings_validation_result(request, validation=validation)
+
+
+@router.post("/settings/spoolman/validate")
+async def settings_validate_spoolman_fields(
+    request: Request,
+) -> HTMLResponse:
+    try:
+        validation = await request.app.state.spoolman.validate_required_filament_fields()
+    except httpx.HTTPError as exc:
+        return _render_settings_spoolman_result(
+            request,
+            error_message=f"Failed to validate Spoolman fields: {exc}",
+        )
+    return _render_settings_spoolman_result(request, validation=validation)
+
+
+@router.post("/settings/spoolman/ensure")
+async def settings_ensure_spoolman_fields(
+    request: Request,
+) -> HTMLResponse:
+    try:
+        result = await request.app.state.spoolman.ensure_required_filament_fields()
+    except httpx.HTTPError as exc:
+        return _render_settings_spoolman_result(
+            request,
+            error_message=f"Failed to create missing Spoolman fields: {exc}",
+        )
+    return _render_settings_spoolman_result(
+        request,
+        validation=result["validation"],
+        created_keys=result["created_keys"],
+        errors=result["errors"],
+    )
 
 
 @router.post("/import-profile")
