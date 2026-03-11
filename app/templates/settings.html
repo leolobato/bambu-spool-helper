@@ -3,58 +3,86 @@
 {% block content %}
 <div class="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
   <div class="space-y-4">
-  <section class="rounded-xl border border-slate-800 bg-panel p-5">
-    <h2 class="text-lg font-semibold tracking-tight">Profile Management</h2>
-    <p class="mt-1 text-sm text-slate-400">Import new OrcaSlicer profiles or reload the profile cache for the selected machine.</p>
+    <section class="rounded-xl border border-slate-800 bg-panel p-5">
+      <h2 class="text-lg font-semibold tracking-tight">Machine</h2>
+      <p class="mt-1 text-sm text-slate-400">Choose which OrcaSlicer machine profile the Settings actions should operate on.</p>
 
-    <div class="mt-4 flex flex-wrap gap-2">
-      <button
-        class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-        hx-get="/web/import-profile?machine={{ machine_id }}"
-        hx-target="#modal"
-        hx-swap="innerHTML"
-      >
-        Import Profile
-      </button>
-      <button
-        class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
-        hx-post="/web/settings/reload-profiles?machine={{ machine_id }}"
-        hx-target="#settings-action-result"
-        hx-swap="innerHTML"
-      >
-        Reload Profiles
-      </button>
-    </div>
+      <form method="get" action="/web/settings" class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+        <div class="min-w-0 flex-1">
+          <label class="mb-1 block text-xs text-slate-400" for="machine-select">Selected machine</label>
+          <select
+            id="machine-select"
+            name="machine"
+            class="w-full min-w-0 rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200"
+          >
+            {% for machine_option in machine_options %}
+              <option value="{{ machine_option.setting_id }}" {% if machine_option.setting_id == machine_id %}selected{% endif %}>
+                {{ machine_option.name }} | {{ machine_option.setting_id }}
+              </option>
+            {% endfor %}
+          </select>
+        </div>
+        <button
+          type="submit"
+          class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+        >
+          Change Machine
+        </button>
+      </form>
+    </section>
 
-    <div id="settings-action-result" class="mt-4">
-      {% include "partials/settings_action_result.html" %}
-    </div>
-  </section>
+    <section class="rounded-xl border border-slate-800 bg-panel p-5">
+      <h2 class="text-lg font-semibold tracking-tight">Profile Management</h2>
+      <p class="mt-1 text-sm text-slate-400">Import new OrcaSlicer profiles or reload the profile cache for the selected machine.</p>
 
-  <section class="rounded-xl border border-slate-800 bg-panel p-5">
-    <h2 class="text-lg font-semibold tracking-tight">Profile Validation</h2>
-    <p class="mt-1 text-sm text-slate-400">Check every linked Spoolman filament against OrcaSlicer profiles for <span class="font-mono text-slate-300">{{ machine_id }}</span>.</p>
+      <div class="mt-4 flex flex-wrap gap-2">
+        <button
+          class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+          hx-get="/web/import-profile?machine={{ machine_id }}"
+          hx-target="#modal"
+          hx-swap="innerHTML"
+        >
+          Import Profile
+        </button>
+        <button
+          class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+          hx-post="/web/settings/reload-profiles?machine={{ machine_id }}"
+          hx-target="#settings-action-result"
+          hx-swap="innerHTML"
+        >
+          Reload Profiles
+        </button>
+      </div>
 
-    <div class="mt-4">
-      <button
-        class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
-        hx-post="/web/settings/validate-profiles?machine={{ machine_id }}"
-        hx-target="#settings-validation-result"
-        hx-swap="innerHTML"
-      >
-        Validate Profiles
-      </button>
-    </div>
+      <div id="settings-action-result" class="mt-4">
+        {% include "partials/settings_action_result.html" %}
+      </div>
+    </section>
 
-    <div id="settings-validation-result" class="mt-4">
-      {% include "partials/settings_validation_result.html" %}
-    </div>
-  </section>
+    <section class="rounded-xl border border-slate-800 bg-panel p-5">
+      <h2 class="text-lg font-semibold tracking-tight">Profile Validation</h2>
+      <p class="mt-1 text-sm text-slate-400">Check every linked Spoolman filament against OrcaSlicer profiles for <span class="font-mono text-slate-300">{{ machine_id }}</span>.</p>
+
+      <div class="mt-4">
+        <button
+          class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+          hx-post="/web/settings/validate-profiles?machine={{ machine_id }}"
+          hx-target="#settings-validation-result"
+          hx-swap="innerHTML"
+        >
+          Validate Profiles
+        </button>
+      </div>
+
+      <div id="settings-validation-result" class="mt-4">
+        {% include "partials/settings_validation_result.html" %}
+      </div>
+    </section>
   </div>
 
   <section id="filament-detail" class="min-h-[24rem] rounded-xl border border-slate-800 bg-panel p-4">
     <div class="rounded-lg border border-dashed border-slate-700 p-6 text-sm text-slate-400">
-      Select an invalid linked filament from Profile Validation to open the same detail panel used in the Filaments tab.
+      Select a filament from Profile Validation to update its linked profile.
     </div>
   </section>
 </div>

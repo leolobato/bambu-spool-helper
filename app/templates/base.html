@@ -22,30 +22,23 @@
   </head>
   <body class="h-full bg-slate-950 text-ink">
     <div class="mx-auto flex h-full max-w-7xl flex-col px-4 py-4 md:px-6">
-      <header class="mb-4 flex items-center justify-between rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3">
-        <div>
-          <h1 class="text-lg font-semibold tracking-tight">bambu-spool-helper</h1>
-          <p class="text-xs text-slate-400">Spoolman linking for Bambu filament profiles</p>
-        </div>
-        <div class="flex items-center gap-2">
-          <form method="get" action="{{ request.url.path }}" class="flex items-center gap-2">
-            <label class="text-xs text-slate-400" for="machine-select">Machine</label>
-            <select
-              id="machine-select"
-              name="machine"
-              class="rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 text-sm text-slate-200"
-              onchange="this.form.submit()"
-            >
-              {% for machine_option in machine_options %}
-                <option value="{{ machine_option.setting_id }}" {% if machine_option.setting_id == machine_id %}selected{% endif %}>
-                  {{ machine_option.name }} | {{ machine_option.setting_id }}
-                </option>
-              {% endfor %}
-            </select>
-          </form>
-          <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'filaments' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/?machine={{ machine_id }}">Filaments</a>
-          <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'trays' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/trays?machine={{ machine_id }}">AMS Trays</a>
-          <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'settings' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/settings?machine={{ machine_id }}">Settings</a>
+      <header class="mb-4 rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div class="min-w-0">
+            <h1 class="text-lg font-semibold tracking-tight">bambu-spool-helper</h1>
+            <p class="text-xs text-slate-400">Spoolman linking for Bambu filament profiles</p>
+          </div>
+          <div class="flex flex-col gap-2 sm:items-start lg:items-end">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <span>Machine</span>
+              <span class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1 font-mono text-slate-200">{{ machine_id }}</span>
+            </div>
+          <nav class="flex flex-wrap gap-2">
+            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'filaments' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/?machine={{ machine_id }}">Filaments</a>
+            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'trays' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/trays?machine={{ machine_id }}">AMS Trays</a>
+            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'settings' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/settings?machine={{ machine_id }}">Settings</a>
+          </nav>
+          </div>
         </div>
       </header>
 
