@@ -445,10 +445,13 @@ def _build_profile_field_sync(
         }
     )
 
+    has_changes = any(field["changed"] for field in custom_fields + basic_fields)
+
     return {
         "custom_fields": custom_fields,
         "basic_fields": basic_fields,
-        "has_changes": any(field["changed"] for field in custom_fields + basic_fields),
+        "has_changes": has_changes,
+        "is_fully_synced": not has_changes,
         "target_nozzle": target_nozzle,
         "target_bed": target_bed,
         "target_speed": target_speed,
@@ -677,6 +680,7 @@ async def _render_filament_detail(
         for profile in filtered_profiles
     }
     profile_field_sync = _build_profile_field_sync(filament, linked_profile)
+    headers = {"HX-Trigger": json.dumps({"filament-selected": {"filamentId": filament.id}})}
 
     return templates.TemplateResponse(
         "partials/filament_detail.html",
@@ -699,6 +703,7 @@ async def _render_filament_detail(
             "action_error": action_error,
             "profile_field_sync": profile_field_sync,
         },
+        headers=headers,
     )
 
 

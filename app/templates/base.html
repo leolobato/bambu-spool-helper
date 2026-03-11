@@ -88,6 +88,42 @@
           swap: "innerHTML"
         });
       });
+
+      document.body.addEventListener("filament-selected", function (event) {
+        const list = document.getElementById("filament-list");
+        if (!list) {
+          return;
+        }
+
+        const filamentId = event.detail && event.detail.filamentId;
+        if (!filamentId) {
+          return;
+        }
+
+        const params = new URLSearchParams({
+          selected: String(filamentId)
+        });
+
+        const filterInput = document.getElementById("filter-mode");
+        if (filterInput && filterInput.value) {
+          params.set("filter", filterInput.value);
+        }
+
+        const machineInput = document.getElementById("selected-machine");
+        if (machineInput && machineInput.value) {
+          params.set("machine", machineInput.value);
+        }
+
+        const searchInput = document.getElementById("filament-search");
+        if (searchInput && searchInput.value) {
+          params.set("search", searchInput.value);
+        }
+
+        htmx.ajax("GET", "/web/filaments?" + params.toString(), {
+          target: "#filament-list",
+          swap: "innerHTML"
+        });
+      });
     </script>
   </body>
 </html>

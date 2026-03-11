@@ -1,4 +1,5 @@
 import unittest
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock
 
@@ -121,6 +122,44 @@ class WebProfileSelectionTests(unittest.TestCase):
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["current_label"], "50 °C")
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["target_label"], "65 °C")
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["source_label"], "hot_plate_temp")
+        self.assertFalse(sync["is_fully_synced"])
+
+    def test_build_profile_field_sync_marks_matching_fields_as_fully_synced(self) -> None:
+        filament = SpoolmanFilament(
+            id=6,
+            name="Synced PLA",
+            material="PLA",
+            extruder_temp=225,
+            bed_temp=65,
+            extra={
+                "nozzle_temp": "[220,230]",
+                "bed_temp": "[65,65]",
+                "printing_speed": "[18,25]",
+            },
+        )
+        profile = FilamentProfileResponse(
+            name="PLA Match",
+            filament_id="GFSNL04",
+            setting_id="linked-setting",
+            filament_type="PLA",
+            extruder_temp=225,
+            nozzle_temp_min=220,
+            nozzle_temp_max=230,
+            bed_temp_min=65,
+            bed_temp_max=65,
+            drying_temp_min=0,
+            drying_temp_max=0,
+            drying_time=0,
+            print_speed_min=18,
+            print_speed_max=25,
+        )
+
+        sync = _build_profile_field_sync(filament, profile)
+
+        self.assertIsNotNone(sync)
+        assert sync is not None
+        self.assertFalse(sync["has_changes"])
+        self.assertTrue(sync["is_fully_synced"])
 
     def test_build_create_profile_field_mappings_describes_spoolman_to_orca_flow(self) -> None:
         mappings = _build_create_profile_field_mappings(
@@ -193,6 +232,8 @@ class WebProfileSelectionTests(unittest.TestCase):
 
         self.assertEqual(response.status_code, 200)
         request.app.state.spoolman.get_filament.assert_awaited_once_with(5)
+        hx_trigger = json.loads(response.headers["HX-Trigger"])
+        self.assertEqual(hx_trigger["filament-selected"]["filamentId"], 5)
 
     def _run_async(self, coro):
         import asyncio
