@@ -1,0 +1,29 @@
+{% if error %}
+  <div class="mb-4 rounded-md border border-rose-700/60 bg-rose-900/30 p-3 text-sm text-rose-100">{{ error }}</div>
+{% endif %}
+
+{% if mqtt_status.state == "connected" %}
+  <div class="mb-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm text-emerald-100">
+    {{ mqtt_status.message }}
+    {% if mqtt_status.last_message_at %}
+      <span class="text-emerald-300">Last update: {{ mqtt_status.last_message_at }}</span>
+    {% endif %}
+  </div>
+{% elif mqtt_status.state == "not_configured" %}
+  <div class="mb-4 rounded-md border border-amber-700/60 bg-amber-900/20 p-3 text-sm text-amber-100">
+    {{ mqtt_status.message }}
+  </div>
+{% else %}
+  <div class="mb-4 rounded-md border border-rose-700/60 bg-rose-900/30 p-3 text-sm text-rose-100">
+    {{ mqtt_status.message }}
+  </div>
+{% endif %}
+
+<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+  {% for tray in trays %}
+    <div id="tray-card-{{ tray.tray_index }}">
+      {% set matched_profile = tray_profile_matches.get(tray.tray_index) if tray_profile_matches is defined else None %}
+      {% include "partials/tray_card.html" %}
+    </div>
+  {% endfor %}
+</div>

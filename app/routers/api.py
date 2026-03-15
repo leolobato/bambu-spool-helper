@@ -1,0 +1,135 @@
+"""REST API routes for status, profiles, and activation."""
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any
+
+import httpx
+from fastapi import APIRouter, HTTPException, Query, Request
+
+from app.models import VALID_TRAY_TYPES, ActivationRecord, ActivateRequest, ActivateResponse, FilamentProfileResponse, StatusResponse
+
+router = APIRouter(tags=["API"])
+
+
+TRAY_LABELS = ["Tray 1", "Tray 2", "Tray 3", "Tray 4", "Ext"]
+
+
+@router.get("/status", response_model=StatusResponse)
+async def get_status(request: Request) -> StatusResponse:
+    settings = request.app.state.settings
+    profile_count = len(await request.app.state.orcaslicer.get_profiles(settings.default_machine_profile_id))
+    return StatusResponse(port=settings.port, profiles_loaded=profile_count)
+
+
+@router.get("/valid-tray-types")
+async def get_valid_tray_types() -> list[str]:
+    return sorted(VALID_TRAY_TYPES)
+
+
+@router.get("/profiles", response_model=list[FilamentProfileResponse])
+async def get_profiles(
+    request: Request,
+    machine: str | None = Query(default=None),
+    search: str | None = Query(default=None),
+) -> list[FilamentProfileResponse]:
+    profiles = await request.app.state.orcaslicer.get_profiles(machine)
+    term = (search or "").strip().lower()
+    if not term:
+        return profiles
+
+    return [
+        profile
+        for profile in profiles
+        if term in profile.name.lower() or term in profile.filament_type.lower()
+    ]
+
+
+@router.post("/activate", response_model=ActivateResponse)
+async def activate_profile(request: Request, payload: ActivateRequest) -> ActivateResponse:
+    mqtt = request.app.state.mqtt
+
+    ams_filament_id = payload.filament_id.strip()
+    if not ams_filament_id:
+        return ActivateResponse(success=False, profile_name="", message="filament_id is required")
+
+    filament_type = payload.filament_type.strip()
+    if not filament_type:
+        return ActivateResponse(success=False, profile_name="", message="filament_type is required")
+
+    profile_name = f"{filament_type} ({ams_filament_id})"
+
+    success, mqtt_message = mqtt.activate_filament(
+        tray=payload.tray,
+        tray_info_idx=ams_filament_id,
+        color_hex=payload.color_hex,
+        nozzle_temp_min=payload.nozzle_temp_min,
+        nozzle_temp_max=payload.nozzle_temp_max,
+        filament_type=filament_type,
+        bed_temp=payload.bed_temp or None,
+        cali_idx=-1,
+        remain=-1,
+    )
+
+    tray_label = TRAY_LABELS[payload.tray]
+    message = (
+        f"Updated {tray_label}: {profile_name}"
+        if success
+        else f"Failed to update {tray_label}: {mqtt_message}"
+    )
+    if success and mqtt_message != "Command sent to printer":
+        message = f"{message} ({mqtt_message})"
+
+    if success:
+        recent_activations: list[ActivationRecord] = request.app.state.recent_activations
+        recent_activations.insert(
+            0,
+            ActivationRecord(
+                created_at=datetime.now(timezone.utc),
+                profile_name=profile_name,
+                tray=payload.tray,
+                color_hex=payload.color_hex,
+                success=True,
+            ),
+        )
+        del recent_activations[10:]
+
+    return ActivateResponse(success=success, profile_name=profile_name, message=message)
+
+
+@router.post("/reload")
+async def reload_profiles(
+    request: Request,
+    machine: str | None = Query(default=None),
+) -> dict[str, Any]:
+    try:
+        reload_summary, profiles = await request.app.state.orcaslicer.reload_profiles(machine)
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Failed to reload profiles: {exc}") from exc
+
+    return {
+        "success": True,
+        "orcaslicer": reload_summary,
+        "profiles_loaded": len(profiles),
+    }
+
+
+@router.post("/import")
+async def import_profile(
+    request: Request,
+    payload: dict[str, Any],
+    machine: str | None = Query(default=None),
+) -> dict[str, Any]:
+    try:
+        return await request.app.state.orcaslicer.import_profile(payload, machine)
+    except httpx.HTTPStatusError as exc:
+        error_detail = exc.response.text.strip()
+        if not error_detail:
+            error_detail = str(exc)
+        raise HTTPException(
+            status_code=exc.response.status_code,
+            detail=f"Failed to import profile: {error_detail}",
+        ) from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"Import request failed: {exc}") from exc

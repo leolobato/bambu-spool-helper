@@ -1,0 +1,162 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/70 p-4"
+  onclick="closeModal()"
+>
+  <div
+    class="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+    onclick="event.stopPropagation()"
+  >
+    {% if success_message %}
+      <h2 class="text-lg font-semibold">Import Filament Profile</h2>
+      <div class="mt-3 rounded-md border border-emerald-700/60 bg-emerald-900/30 p-3 text-sm text-emerald-100">
+        {{ success_message }}
+      </div>
+      {% if import_result %}
+        <dl class="mt-3 space-y-1 text-sm text-slate-200">
+          <div class="flex gap-2">
+            <dt class="w-28 text-slate-400">Name</dt>
+            <dd>{{ import_result.get("name", "-") }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-28 text-slate-400">Type</dt>
+            <dd>{{ import_result.get("filament_type", "-") }}</dd>
+          </div>
+          <div class="flex gap-2">
+            <dt class="w-28 text-slate-400">Filament ID</dt>
+            <dd class="font-mono">{{ import_result.get("filament_id", "-") }}</dd>
+          </div>
+        </dl>
+      {% endif %}
+      <div class="mt-5 flex justify-end">
+        <button
+          type="button"
+          class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+          onclick="closeModal()"
+        >
+          Close
+        </button>
+      </div>
+    {% elif pending_import_payload %}
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Choose Filament Type</h2>
+          <p class="mt-1 text-xs text-slate-400">The resolved profile needs a valid AMS filament type before it can be saved.</p>
+        </div>
+        <button
+          type="button"
+          class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+          onclick="closeModal()"
+        >
+          Close
+        </button>
+      </div>
+
+      {% if error_message %}
+        <div class="mt-3 rounded-md border border-rose-700/60 bg-rose-900/30 p-2 text-sm text-rose-100">
+          {{ error_message }}
+        </div>
+      {% endif %}
+
+      <div class="mt-3 rounded-md border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-300">
+        <div><span class="text-slate-400">Resolved profile:</span> {{ pending_profile_name or "-" }}</div>
+        <div class="mt-1"><span class="text-slate-400">Filament ID:</span> <span class="font-mono">{{ pending_filament_id or "-" }}</span></div>
+        <div class="mt-1"><span class="text-slate-400">Current filament type:</span> {{ pending_filament_type or "-" }}</div>
+      </div>
+
+      <form
+        class="mt-4 space-y-4"
+        hx-post="/web/import-profile"
+        hx-target="#modal"
+        hx-swap="innerHTML"
+      >
+        <input type="hidden" name="machine" value="{{ machine_id }}" />
+        <input type="hidden" name="payload_json" value="{{ pending_import_payload }}" />
+        <div>
+          <label for="resolved-filament-type" class="mb-1 block text-xs text-slate-300">Filament type</label>
+          <select
+            id="resolved-filament-type"
+            name="filament_type"
+            required
+            class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+          >
+            <option value="">Choose filament type</option>
+            {% for option in valid_filament_types %}
+              <option value="{{ option }}" {% if option == pending_filament_type|upper %}selected{% endif %}>{{ option }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            onclick="closeModal()"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+          >
+            Import
+          </button>
+        </div>
+      </form>
+    {% else %}
+      <div class="flex items-start justify-between gap-3">
+        <div>
+          <h2 class="text-lg font-semibold">Import Filament Profile</h2>
+          <p class="mt-1 text-xs text-slate-400">Upload an OrcaSlicer filament profile JSON file.</p>
+        </div>
+        <button
+          type="button"
+          class="rounded-md border border-slate-700 px-2 py-1 text-xs text-slate-200 hover:bg-slate-800"
+          onclick="closeModal()"
+        >
+          Close
+        </button>
+      </div>
+
+      {% if error_message %}
+        <div class="mt-3 rounded-md border border-rose-700/60 bg-rose-900/30 p-2 text-sm text-rose-100">
+          {{ error_message }}
+        </div>
+      {% endif %}
+
+      <form
+        class="mt-4 space-y-4"
+        hx-post="/web/import-profile"
+        hx-target="#modal"
+        hx-swap="innerHTML"
+        hx-encoding="multipart/form-data"
+      >
+        <input type="hidden" name="machine" value="{{ machine_id }}" />
+        <div>
+          <label for="profile-file" class="mb-1 block text-xs text-slate-300">JSON profile file</label>
+          <input
+            id="profile-file"
+            name="profile_file"
+            type="file"
+            accept=".json,application/json"
+            required
+            class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink file:mr-3 file:rounded file:border-0 file:bg-slate-800 file:px-3 file:py-1.5 file:text-slate-200"
+          />
+        </div>
+        <div class="flex justify-end gap-2">
+          <button
+            type="button"
+            class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
+            onclick="closeModal()"
+          >
+            Cancel
+          </button>
+          <button
+            type="submit"
+            class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+          >
+            Import
+          </button>
+        </div>
+      </form>
+    {% endif %}
+  </div>
+</div>

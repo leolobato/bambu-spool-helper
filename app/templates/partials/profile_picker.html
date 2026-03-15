@@ -1,0 +1,109 @@
+<div class="space-y-3">
+  <div>
+    <h3 class="text-base font-semibold">Link to Filament Profile</h3>
+    <p class="text-xs text-slate-400">Pick a profile from OrcaSlicer and store mapping in Spoolman extra fields.</p>
+  </div>
+
+  <form
+    class="flex gap-2"
+    hx-get="/web/profiles"
+    hx-target="#profile-picker"
+    hx-trigger="input changed delay:250ms, search, submit"
+  >
+    <input type="hidden" name="filament_id" value="{{ filament_id }}" />
+    <input type="hidden" name="machine" value="{{ machine_id }}" />
+    <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
+    <input type="hidden" name="selected_linked_filament_id" value="{{ selected_linked_filament_id }}" />
+    <input type="hidden" name="selected_filament_type" value="{{ selected_filament_type }}" />
+    <input
+      id="profile-search"
+      name="search"
+      type="search"
+      value="{{ profile_search }}"
+      placeholder="Search profile name, type, or ID"
+      class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+    />
+  </form>
+
+  {% if profiles %}
+    <form
+      id="link-filament-form-{{ filament_id }}"
+      class="space-y-2"
+      hx-post="/web/link/{{ filament_id }}"
+      hx-target="#filament-detail"
+    >
+      <input type="hidden" name="machine" value="{{ machine_id }}" />
+      <input type="hidden" name="profile_search" value="{{ profile_search }}" />
+      <input type="hidden" name="selected_setting_id" value="{{ selected_setting_id }}" />
+      <select name="linked_filament_id" class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink">
+        {% for profile in profiles %}
+          <option
+            value="{{ profile.filament_id }}"
+            data-setting-id="{{ profile.setting_id }}"
+            {% if profile.setting_id == selected_setting_id or (not selected_setting_id and profile.filament_id == selected_linked_filament_id) %}selected{% endif %}
+          >
+            {{ profile.name }} | {{ profile.filament_type }} | {{ profile.filament_id }}
+          </option>
+        {% endfor %}
+      </select>
+      <button class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30" type="submit">
+        Link Filament
+      </button>
+    </form>
+    <script>
+      (() => {
+        const currentScript = document.currentScript;
+        if (!currentScript) {
+          return;
+        }
+
+        const form = currentScript.previousElementSibling;
+        const container = currentScript.parentElement;
+        if (!(form instanceof HTMLFormElement) || !(container instanceof HTMLElement)) {
+          return;
+        }
+
+        const select = form.querySelector('select[name="linked_filament_id"]');
+        if (!(select instanceof HTMLSelectElement)) {
+          return;
+        }
+
+        const typeSelect = document.getElementById("ams-filament-type-{{ filament_id }}");
+
+        const syncSelectedSettingId = () => {
+          const option = select.selectedOptions[0];
+          const selectedSettingId = option?.dataset.settingId ?? "";
+          const selectedLinkedFilamentId = option?.value ?? "";
+          container.querySelectorAll('input[name="selected_setting_id"]').forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.value = selectedSettingId;
+            }
+          });
+          container.querySelectorAll('input[name="selected_linked_filament_id"]').forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.value = selectedLinkedFilamentId;
+            }
+          });
+        };
+
+        const syncSelectedFilamentType = () => {
+          const selectedFilamentType = typeSelect instanceof HTMLSelectElement ? typeSelect.value : "";
+          container.querySelectorAll('input[name="selected_filament_type"]').forEach((input) => {
+            if (input instanceof HTMLInputElement) {
+              input.value = selectedFilamentType;
+            }
+          });
+        };
+
+        syncSelectedSettingId();
+        syncSelectedFilamentType();
+        select.addEventListener("change", syncSelectedSettingId);
+        if (typeSelect instanceof HTMLSelectElement) {
+          typeSelect.addEventListener("change", syncSelectedFilamentType);
+        }
+      })();
+    </script>
+  {% else %}
+    <div class="rounded-md border border-dashed border-slate-700 p-3 text-sm text-slate-400">No profiles match this search.</div>
+  {% endif %}
+</div>

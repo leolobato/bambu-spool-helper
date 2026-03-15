@@ -1,0 +1,86 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div
+  id="trays-content"
+  hx-get="/web/trays/content?machine={{ machine_id }}"
+  hx-trigger="every 8s"
+  hx-swap="innerHTML"
+>
+  {% include "partials/trays_content.html" %}
+</div>
+<script>
+  (function () {
+    let pauseUntil = 0;
+    const PICKER_COOLDOWN_MS = 15000;
+
+    function isElement(node) {
+      return node instanceof Element;
+    }
+
+    function isInsideTraysContent(node) {
+      return isElement(node) && Boolean(node.closest("#trays-content"));
+    }
+
+    function isInteractive(node) {
+      return isElement(node) && node.matches("input, select, textarea, button");
+    }
+
+    function pauseRefresh(ms = PICKER_COOLDOWN_MS) {
+      pauseUntil = Math.max(pauseUntil, Date.now() + ms);
+    }
+
+    document.body.addEventListener("focusin", function (event) {
+      if (isInsideTraysContent(event.target) && isInteractive(event.target)) {
+        pauseRefresh();
+      }
+    });
+
+    document.body.addEventListener("input", function (event) {
+      if (isInsideTraysContent(event.target)) {
+        pauseRefresh();
+      }
+    });
+
+    document.body.addEventListener("change", function (event) {
+      if (isInsideTraysContent(event.target)) {
+        pauseRefresh();
+      }
+    });
+
+    document.body.addEventListener("mousedown", function (event) {
+      if (isInsideTraysContent(event.target)) {
+        pauseRefresh();
+      }
+    });
+
+    document.body.addEventListener("htmx:beforeRequest", function (event) {
+      const detail = event.detail;
+      if (!detail) {
+        return;
+      }
+
+      const requester = detail.elt;
+      if (!isElement(requester) || requester.id !== "trays-content") {
+        return;
+      }
+
+      const requestPath = detail.requestConfig && detail.requestConfig.path;
+      if (!requestPath || !requestPath.startsWith("/web/trays/content")) {
+        return;
+      }
+
+      if (document.hidden) {
+        event.preventDefault();
+        return;
+      }
+
+      const active = document.activeElement;
+      const hasFocusedControl = isInsideTraysContent(active) && isInteractive(active);
+      if (hasFocusedControl || Date.now() < pauseUntil) {
+        event.preventDefault();
+      }
+    });
+  })();
+</script>
+{% endblock %}

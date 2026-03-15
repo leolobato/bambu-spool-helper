@@ -1,0 +1,51 @@
+<div class="rounded-xl border border-slate-800 bg-panel p-4 space-y-3">
+  <div class="flex items-center justify-between">
+    <h3 class="text-base font-semibold">{{ tray.label }}</h3>
+    <span class="inline-block h-5 w-5 rounded-full border border-black/30" style="background: {{ tray.color_css }}"></span>
+  </div>
+
+  {% if tray.is_empty %}
+    <div class="rounded-md border border-dashed border-slate-700 p-3 text-sm text-slate-400">Empty</div>
+  {% else %}
+    <div class="grid grid-cols-2 gap-2 text-sm">
+      <div class="rounded-md border border-slate-700 p-2">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Type</div>
+        <div class="font-mono text-slate-200">{{ tray.tray_type or "-" }}</div>
+      </div>
+      <div class="rounded-md border border-slate-700 p-2">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Filament ID</div>
+        <div class="font-mono text-slate-200">{{ tray.tray_info_idx or "-" }}</div>
+      </div>
+      <div class="rounded-md border border-slate-700 p-2 col-span-2">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Sub Brand</div>
+        <div class="font-mono text-slate-200">{{ tray.tray_sub_brands or "-" }}</div>
+      </div>
+      <div class="rounded-md border border-slate-700 p-2 col-span-2">
+        <div class="text-xs uppercase tracking-wide text-slate-400">Nozzle Temp</div>
+        <div class="font-mono text-slate-200">{{ tray.nozzle_temp_min }}-{{ tray.nozzle_temp_max }} &deg;C</div>
+      </div>
+    </div>
+  {% endif %}
+
+  {% if not tray.is_empty and tray.tray_info_idx %}
+    {% if matched_profile %}
+      <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-2 text-xs text-emerald-200">
+        <div class="font-medium">Matched Orca Profile</div>
+        <div class="mt-1 text-emerald-100">{{ matched_profile.name }}</div>
+        <div class="mt-1 text-emerald-200/80">{{ matched_profile.filament_type }} | filament_id={{ matched_profile.filament_id }}</div>
+      </div>
+    {% else %}
+      <div class="rounded-md border border-amber-700/60 bg-amber-900/20 p-2 text-xs text-amber-200">
+        No profile matches filament_id={{ tray.tray_info_idx }}.
+      </div>
+    {% endif %}
+  {% endif %}
+
+  {% if assign_success is defined and assign_success %}
+    <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-2 text-xs text-emerald-200">{{ assign_success }}</div>
+  {% endif %}
+
+  <div id="tray-detail-{{ tray.tray_index }}">
+    {% include "partials/tray_detail.html" %}
+  </div>
+</div>

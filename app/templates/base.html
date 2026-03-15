@@ -1,0 +1,129 @@
+<!doctype html>
+<html lang="en" class="h-full dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>bambu-spool-helper</title>
+    <script src="https://cdn.tailwindcss.com?plugins=forms"></script>
+    <script>
+      tailwind.config = {
+        darkMode: "class",
+        theme: {
+          extend: {
+            colors: {
+              ink: "#e2e8f0",
+              panel: "#0f172a"
+            }
+          }
+        }
+      }
+    </script>
+    <script src="https://unpkg.com/htmx.org@1.9.12"></script>
+  </head>
+  <body class="h-full bg-slate-950 text-ink">
+    <div class="mx-auto flex h-full max-w-7xl flex-col px-4 py-4 md:px-6">
+      <header class="mb-4 rounded-xl border border-slate-800 bg-slate-900/80 px-4 py-3">
+        <div class="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <div class="min-w-0">
+            <h1 class="text-lg font-semibold tracking-tight">bambu-spool-helper</h1>
+            <p class="text-xs text-slate-400">Spoolman linking for Bambu filament profiles</p>
+          </div>
+          <div class="flex flex-col gap-2 sm:items-start lg:items-end">
+            <div class="flex flex-wrap items-center gap-2 text-xs text-slate-400">
+              <span>Machine</span>
+              <span class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1 font-mono text-slate-200">{{ machine_id }}</span>
+            </div>
+          <nav class="flex flex-wrap gap-2">
+            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'filaments' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/?machine={{ machine_id }}">Filaments</a>
+            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'trays' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/trays?machine={{ machine_id }}">AMS Trays</a>
+            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'settings' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/settings?machine={{ machine_id }}">Settings</a>
+          </nav>
+          </div>
+        </div>
+      </header>
+
+      <main class="min-h-0 flex-1">{% block content %}{% endblock %}</main>
+    </div>
+    <div id="modal"></div>
+    <script>
+      function closeModal() {
+        const modal = document.getElementById("modal");
+        if (modal) {
+          modal.innerHTML = "";
+        }
+      }
+
+      document.body.addEventListener("profiles-imported", function () {
+        const picker = document.getElementById("profile-picker");
+        if (!picker) {
+          return;
+        }
+
+        const filamentInput = picker.querySelector("input[name='filament_id']");
+        if (!filamentInput) {
+          return;
+        }
+
+        const params = new URLSearchParams({
+          filament_id: filamentInput.value,
+          machine: "{{ machine_id }}"
+        });
+        const selectedSettingInput = picker.querySelector("input[name='selected_setting_id']");
+        if (selectedSettingInput && selectedSettingInput.value) {
+          params.set("selected_setting_id", selectedSettingInput.value);
+        }
+
+        const selectedInput = picker.querySelector("input[name='selected_linked_filament_id']");
+        if (selectedInput && selectedInput.value) {
+          params.set("selected_linked_filament_id", selectedInput.value);
+        }
+
+        const searchInput = picker.querySelector("#profile-search");
+        if (searchInput && searchInput.value) {
+          params.set("search", searchInput.value);
+        }
+
+        htmx.ajax("GET", "/web/profiles?" + params.toString(), {
+          target: "#profile-picker",
+          swap: "innerHTML"
+        });
+      });
+
+      document.body.addEventListener("filament-selected", function (event) {
+        const list = document.getElementById("filament-list");
+        if (!list) {
+          return;
+        }
+
+        const filamentId = event.detail && event.detail.filamentId;
+        if (!filamentId) {
+          return;
+        }
+
+        const params = new URLSearchParams({
+          selected: String(filamentId)
+        });
+
+        const filterInput = document.getElementById("filter-mode");
+        if (filterInput && filterInput.value) {
+          params.set("filter", filterInput.value);
+        }
+
+        const machineInput = document.getElementById("selected-machine");
+        if (machineInput && machineInput.value) {
+          params.set("machine", machineInput.value);
+        }
+
+        const searchInput = document.getElementById("filament-search");
+        if (searchInput && searchInput.value) {
+          params.set("search", searchInput.value);
+        }
+
+        htmx.ajax("GET", "/web/filaments?" + params.toString(), {
+          target: "#filament-list",
+          swap: "innerHTML"
+        });
+      });
+    </script>
+  </body>
+</html>
