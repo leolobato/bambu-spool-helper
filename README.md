@@ -8,7 +8,7 @@ A FastAPI service that links [Spoolman](https://github.com/Donkie/Spoolman) fila
 
 ## How It Works
 
-1. Fetches filament profiles from an [orcaslicer-cli](../orcaslicer-cli/) HTTP API
+1. Fetches filament profiles from an [orcaslicer-cli](https://github.com/leolobato/orcaslicer-cli) HTTP API
 2. Reads your filament inventory from Spoolman
 3. Lets you link each Spoolman filament to a Bambu profile (stored as Spoolman extra fields)
 4. On activation, sends MQTT commands to the printer to set the AMS tray filament type, color, and temperature
