@@ -624,6 +624,7 @@ def _render_create_profile_modal(
     headers: dict[str, str] | None = None,
 ) -> HTMLResponse:
     return templates.TemplateResponse(
+        request,
         "partials/create_profile_from_filament.html",
         {
             "request": request,
@@ -683,6 +684,7 @@ async def _render_filament_detail(
     headers = {"HX-Trigger": json.dumps({"filament-selected": {"filamentId": filament.id}})}
 
     return templates.TemplateResponse(
+        request,
         "partials/filament_detail.html",
         {
             "request": request,
@@ -721,6 +723,7 @@ def _render_import_profile_modal(
     headers: dict[str, str] | None = None,
 ) -> HTMLResponse:
     return templates.TemplateResponse(
+        request,
         "partials/import_profile.html",
         {
             "request": request,
@@ -746,6 +749,7 @@ def _render_settings_action_result(
     reload_summary: dict[str, Any] | None = None,
 ) -> HTMLResponse:
     return templates.TemplateResponse(
+        request,
         "partials/settings_action_result.html",
         {
             "request": request,
@@ -763,6 +767,7 @@ def _render_settings_validation_result(
     error_message: str = "",
 ) -> HTMLResponse:
     return templates.TemplateResponse(
+        request,
         "partials/settings_validation_result.html",
         {
             "request": request,
@@ -781,6 +786,7 @@ def _render_settings_spoolman_result(
     error_message: str = "",
 ) -> HTMLResponse:
     return templates.TemplateResponse(
+        request,
         "partials/settings_spoolman_result.html",
         {
             "request": request,
@@ -824,6 +830,7 @@ async def index(
     profile_field_sync = _build_profile_field_sync(selected_filament, linked_profile) if selected_filament else None
 
     return templates.TemplateResponse(
+        request,
         "index.html",
         {
             "request": request,
@@ -870,6 +877,7 @@ async def settings_page(
 ) -> HTMLResponse:
     machine_options, machine_id = await _machine_context(request, machine)
     return templates.TemplateResponse(
+        request,
         "settings.html",
         {
             "request": request,
@@ -1300,6 +1308,7 @@ async def filament_list(
         selected_id = filtered_filaments[0].id
 
     return templates.TemplateResponse(
+        request,
         "partials/filament_list.html",
         {
             "request": request,
@@ -1611,7 +1620,7 @@ async def trays_page(
 ) -> HTMLResponse:
     context = await _build_trays_context(request, machine)
     context["active_page"] = "trays"
-    return templates.TemplateResponse("trays.html", context)
+    return templates.TemplateResponse(request, "trays.html", context)
 
 
 @router.get("/trays/content")
@@ -1620,7 +1629,7 @@ async def trays_content(
     machine: str = Query(default=""),
 ) -> HTMLResponse:
     context = await _build_trays_context(request, machine)
-    return templates.TemplateResponse("partials/trays_content.html", context)
+    return templates.TemplateResponse(request, "partials/trays_content.html", context)
 
 
 @router.get("/tray/{tray_index}")
@@ -1647,6 +1656,7 @@ async def tray_detail(
         ]
 
     return templates.TemplateResponse(
+        request,
         "partials/tray_detail.html",
         {
             "request": request,
@@ -1728,6 +1738,7 @@ async def assign_spool_to_tray(
     tray = _apply_assignment_to_tray_view(tray, spool, profile, activation_filament_type)
 
     return templates.TemplateResponse(
+        request,
         "partials/tray_card.html",
         {
             "request": request,
@@ -1777,6 +1788,7 @@ async def profile_picker(
     }
 
     return templates.TemplateResponse(
+        request,
         "partials/profile_picker.html",
         {
             "request": request,
