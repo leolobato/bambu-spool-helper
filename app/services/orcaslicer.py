@@ -166,15 +166,17 @@ class OrcaSlicerClient:
 
     @staticmethod
     def _build_profile(summary: dict[str, Any], detail: dict[str, Any]) -> FilamentProfileResponse:
-        extruder_temp = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature")
-        extruder_temp_initial_layer = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature_initial_layer")
-        nozzle_temp_min = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature_range_low")
-        nozzle_temp_max = OrcaSlicerClient._extract_first_int(detail, "nozzle_temperature_range_high")
+        resolved = detail.get("resolved") if isinstance(detail.get("resolved"), dict) else detail
 
-        bed_temp = OrcaSlicerClient._extract_first_int(detail, "hot_plate_temp")
+        extruder_temp = OrcaSlicerClient._extract_first_int(resolved, "nozzle_temperature")
+        extruder_temp_initial_layer = OrcaSlicerClient._extract_first_int(resolved, "nozzle_temperature_initial_layer")
+        nozzle_temp_min = OrcaSlicerClient._extract_first_int(resolved, "nozzle_temperature_range_low")
+        nozzle_temp_max = OrcaSlicerClient._extract_first_int(resolved, "nozzle_temperature_range_high")
+
+        bed_temp = OrcaSlicerClient._extract_first_int(resolved, "hot_plate_temp")
 
         drying_values = OrcaSlicerClient._extract_int_list(
-            detail,
+            resolved,
             "filament_dev_ams_drying_temperature",
         )
         if len(drying_values) >= 2:
@@ -187,11 +189,11 @@ class OrcaSlicerClient:
             drying_temp_max = 0
 
         filament_id = (
-            OrcaSlicerClient._extract_first_str(detail, "filament_id")
+            OrcaSlicerClient._extract_first_str(resolved, "filament_id")
             or OrcaSlicerClient._extract_first_str(summary, "filament_id")
         )
         filament_type = (
-            OrcaSlicerClient._extract_first_str(detail, "filament_type")
+            OrcaSlicerClient._extract_first_str(resolved, "filament_type")
             or str(summary.get("filament_type", ""))
         )
 
@@ -211,11 +213,11 @@ class OrcaSlicerClient:
             bed_temp_max=bed_temp,
             drying_temp_min=drying_temp_min,
             drying_temp_max=drying_temp_max,
-            drying_time=OrcaSlicerClient._extract_first_int(detail, "filament_dev_ams_drying_time"),
-            print_speed_min=OrcaSlicerClient._extract_first_int(detail, "slow_down_min_speed"),
-            print_speed_max=OrcaSlicerClient._extract_first_int(detail, "filament_max_volumetric_speed"),
-            k=OrcaSlicerClient._extract_first_float(detail, "k"),
-            n=OrcaSlicerClient._extract_first_float(detail, "n"),
+            drying_time=OrcaSlicerClient._extract_first_int(resolved, "filament_dev_ams_drying_time"),
+            print_speed_min=OrcaSlicerClient._extract_first_int(resolved, "slow_down_min_speed"),
+            print_speed_max=OrcaSlicerClient._extract_first_int(resolved, "filament_max_volumetric_speed"),
+            k=OrcaSlicerClient._extract_first_float(resolved, "k"),
+            n=OrcaSlicerClient._extract_first_float(resolved, "n"),
             source="system",
         )
 
