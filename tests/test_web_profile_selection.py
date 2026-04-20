@@ -151,6 +151,42 @@ class WebProfileSelectionTests(unittest.TestCase):
         self.assertFalse(sync["has_changes"])
         self.assertTrue(sync["is_fully_synced"])
 
+    def test_build_profile_field_sync_treats_custom_ranges_as_synced_when_profile_fits_inside(self) -> None:
+        filament = SpoolmanFilament(
+            id=8,
+            name="Broader Range PLA",
+            material="PLA",
+            extruder_temp=210,
+            bed_temp=60,
+            extra={
+                "nozzle_temp": "[180,240]",
+                "bed_temp": "[55,70]",
+            },
+        )
+        profile = FilamentProfileResponse(
+            name="PLA Fits",
+            filament_id="GFSNL05",
+            setting_id="fits-setting",
+            filament_type="PLA",
+            extruder_temp=210,
+            nozzle_temp_min=190,
+            nozzle_temp_max=230,
+            bed_temp_min=60,
+            bed_temp_max=60,
+            drying_temp_min=0,
+            drying_temp_max=0,
+            drying_time=0,
+        )
+
+        sync = _build_profile_field_sync(filament, profile)
+
+        self.assertIsNotNone(sync)
+        assert sync is not None
+        custom_field_by_key = {field["key"]: field for field in sync["custom_fields"]}
+        self.assertFalse(custom_field_by_key["nozzle_temp"]["changed"])
+        self.assertFalse(custom_field_by_key["bed_temp"]["changed"])
+        self.assertTrue(sync["is_fully_synced"])
+
     def test_spoolman_filament_reads_settings_basic_fields_from_api_aliases(self) -> None:
         filament = SpoolmanFilament.model_validate(
             {

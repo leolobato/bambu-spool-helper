@@ -127,7 +127,7 @@
                     <div class="font-mono text-slate-200">{{ field.current_label }}</div>
                   </div>
                   <div>
-                    <div class="text-slate-500">Will Update To</div>
+                    <div class="{% if field.changed %}text-slate-500{% else %}text-emerald-500/80{% endif %}">{% if field.changed %}Will Update To{% else %}In sync{% endif %}</div>
                     <div class="font-mono {% if field.changed %}text-cyan-200{% else %}text-slate-200{% endif %}">{{ field.target_label }}</div>
                     <div class="mt-1 text-slate-500">Source: <span class="font-mono text-slate-300">{{ field.source_label }}</span></div>
                   </div>
@@ -145,7 +145,7 @@
                     <div class="font-mono text-slate-200">{{ field.current_label }}</div>
                   </div>
                   <div>
-                    <div class="text-slate-500">Will Update To</div>
+                    <div class="{% if field.changed %}text-slate-500{% else %}text-emerald-500/80{% endif %}">{% if field.changed %}Will Update To{% else %}In sync{% endif %}</div>
                     <div class="font-mono {% if field.changed %}text-cyan-200{% else %}text-slate-200{% endif %}">{{ field.target_label }}</div>
                     <div class="mt-1 text-slate-500">Source: <span class="font-mono text-slate-300">{{ field.source_label }}</span></div>
                   </div>

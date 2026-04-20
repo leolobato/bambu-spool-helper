@@ -318,6 +318,17 @@ def _range_changed(
     return normalized_current != normalized_target
 
 
+def _target_fits_current_range(
+    current: tuple[int | None, int | None],
+    target: tuple[int, int],
+) -> bool:
+    current_low, current_high = _normalize_optional_range(current)
+    if current_low is None or current_high is None:
+        return False
+    target_low, target_high = _normalize_required_range(target)
+    return current_low <= target_low and target_high <= current_high
+
+
 def _normalize_optional_range(
     values: tuple[int | None, int | None],
 ) -> tuple[int | None, int | None]:
@@ -380,7 +391,7 @@ def _build_profile_field_sync(
             "target": target_nozzle,
             "current_label": _format_range_label(*current_nozzle, unit="°C"),
             "target_label": _format_range_label(*target_nozzle, unit="°C"),
-            "changed": _range_changed(current_nozzle, target_nozzle),
+            "changed": not _target_fits_current_range(current_nozzle, target_nozzle),
             "source_fields": ["nozzle_temperature_range_low", "nozzle_temperature_range_high"],
             "source_label": "nozzle_temperature_range_low + nozzle_temperature_range_high",
         },
@@ -391,7 +402,7 @@ def _build_profile_field_sync(
             "target": target_bed,
             "current_label": _format_range_label(*current_bed, unit="°C"),
             "target_label": _format_range_label(*target_bed, unit="°C"),
-            "changed": _range_changed(current_bed, target_bed),
+            "changed": not _target_fits_current_range(current_bed, target_bed),
             "source_fields": ["hot_plate_temp"],
             "source_label": "hot_plate_temp",
         },
@@ -1589,12 +1600,24 @@ async def sync_profile_fields(
             action_error="No Orca profile currently matches this linked filament.",
         )
 
+    current_extra = filament.extra or {}
+    current_nozzle = _decode_extra_range(current_extra, "nozzle_temp")
+    current_bed = _decode_extra_range(current_extra, "bed_temp")
+    target_nozzle = (linked_profile.nozzle_temp_min, linked_profile.nozzle_temp_max)
+    target_bed = (linked_profile.bed_temp_min, linked_profile.bed_temp_max)
+    nozzle_to_write = target_nozzle
+    if _target_fits_current_range(current_nozzle, target_nozzle):
+        nozzle_to_write = (current_nozzle[0], current_nozzle[1])  # type: ignore[assignment]
+    bed_to_write = target_bed
+    if _target_fits_current_range(current_bed, target_bed):
+        bed_to_write = (current_bed[0], current_bed[1])  # type: ignore[assignment]
+
     try:
         result = await request.app.state.spoolman.update_filament_profile_fields(
             filament_id,
             extruder_temp=linked_profile.extruder_temp,
-            nozzle_temp=(linked_profile.nozzle_temp_min, linked_profile.nozzle_temp_max),
-            bed_temp=(linked_profile.bed_temp_min, linked_profile.bed_temp_max),
+            nozzle_temp=nozzle_to_write,
+            bed_temp=bed_to_write,
             basic_bed_temp=linked_profile.bed_temp_min,
         )
     except ValueError as exc:
