@@ -63,6 +63,8 @@ class FilamentProfileResponse(BaseModel):
     nozzle_temp_max: int
     bed_temp_min: int
     bed_temp_max: int
+    bed_temp_initial_layer: int | None = None
+    print_speed_min: int | None = None
     drying_temp_min: int
     drying_temp_max: int
     drying_time: int

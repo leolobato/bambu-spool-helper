@@ -3,7 +3,7 @@
   onclick="closeModal()"
 >
   <div
-    class="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 p-5 shadow-2xl"
+    class="w-full max-w-3xl rounded-xl border border-slate-700 bg-slate-900 p-6 shadow-2xl"
     onclick="event.stopPropagation()"
   >
     {% if success_message %}
@@ -36,12 +36,17 @@
           Close
         </button>
       </div>
+      <script>
+        setTimeout(function () {
+          if (typeof closeModal === "function") closeModal();
+        }, 1200);
+      </script>
     {% else %}
       <div class="flex items-start justify-between gap-3">
         <div>
           <h2 class="text-lg font-semibold">Create Profile from Spoolman Fields</h2>
-          <p class="mt-1 text-xs text-slate-400">
-            Base profile is inherited from Orca. Values below are prefilled from Spoolman fields.
+          <p class="mt-1 text-sm text-slate-400">
+            Fields are prefilled from Spoolman. Leave any field empty to inherit from the base profile.
           </p>
         </div>
         <button
@@ -53,10 +58,9 @@
         </button>
       </div>
 
-      <div class="mt-3 rounded-md border border-slate-700 bg-slate-950/40 p-3 text-xs text-slate-300">
-        <div><span class="text-slate-400">Spoolman filament:</span> {{ filament.display_name }}</div>
-        <div class="mt-1"><span class="text-slate-400">Flow:</span> Spoolman source fields -> new Orca profile values</div>
-        <div class="mt-1 text-slate-400">Source fields used: <span class="font-mono text-slate-300">ams_filament_type, nozzle_temp, bed_temp, printing_speed</span></div>
+      <div class="mt-4 rounded-md border border-slate-700 bg-slate-950/40 px-3 py-2 text-sm text-slate-300">
+        <span class="text-slate-400">Spoolman filament:</span>
+        <span class="ml-1 font-medium text-slate-100">{{ filament.display_name }}</span>
       </div>
 
       {% if error_message %}
@@ -67,122 +71,182 @@
 
       {% if base_options %}
       <form
-        class="mt-4 space-y-4"
+        id="create-profile-form"
+        class="mt-5 space-y-6"
         hx-post="/web/create-profile/{{ filament.id }}"
         hx-target="#modal"
         hx-swap="innerHTML"
       >
         <input type="hidden" name="machine" value="{{ machine_id }}" />
-        <div class="grid gap-3 md:grid-cols-2">
-          <div>
-            <label for="profile-name" class="mb-1 block text-xs text-slate-300">Profile name</label>
-            <div class="mb-1 text-[11px] text-slate-500">Orca <span class="font-mono">name</span>. The name shown in Orca for this custom filament profile.</div>
-            <input
-              id="profile-name"
-              name="profile_name"
-              type="text"
-              value="{{ suggested_name }}"
-              required
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            />
+
+        <section class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Identity</h3>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label for="profile-name" class="mb-1 block text-sm font-medium text-slate-200">Profile name</label>
+              <input
+                id="profile-name"
+                name="profile_name"
+                type="text"
+                value="{{ suggested_name }}"
+                required
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Orca <span class="font-mono">name</span></p>
+            </div>
+            <div>
+              <label for="base-setting-id" class="mb-1 block text-sm font-medium text-slate-200">Base filament profile</label>
+              <select
+                id="base-setting-id"
+                name="base_setting_id"
+                required
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              >
+                {% for option in base_options %}
+                  <option value="{{ option.setting_id }}" {% if option.setting_id == selected_base_setting_id %}selected{% endif %}>
+                    {{ option.name }} | {{ option.filament_type }} | {{ option.setting_id }}
+                  </option>
+                {% endfor %}
+              </select>
+              <p class="mt-1 text-xs text-slate-500">Orca <span class="font-mono">inherits</span>. Values below come from this profile.</p>
+            </div>
           </div>
+        </section>
+
+        <section class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Material</h3>
           <div>
-            <label for="base-setting-id" class="mb-1 block text-xs text-slate-300">Base filament profile</label>
-            <div class="mb-1 text-[11px] text-slate-500">Orca <span class="font-mono">inherits</span>. Choose the existing profile this new one should extend.</div>
-            <select
-              id="base-setting-id"
-              name="base_setting_id"
-              required
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            >
-              {% for option in base_options %}
-                <option value="{{ option.setting_id }}" {% if option.setting_id == selected_base_setting_id %}selected{% endif %}>
-                  {{ option.name }} | {{ option.filament_type }} | {{ option.setting_id }}
-                </option>
-              {% endfor %}
-            </select>
-          </div>
-          <div>
-            <label for="filament-type" class="mb-1 block text-xs text-slate-300">Filament type</label>
-            <div class="mb-1 text-[11px] text-slate-500">Spoolman <span class="font-mono">ams_filament_type</span> -> Orca <span class="font-mono">filament_type</span>. Material class used for matching and AMS compatibility.</div>
+            <label for="filament-type" class="mb-1 block text-sm font-medium text-slate-200">Filament type</label>
             <select
               id="filament-type"
               name="filament_type"
               required
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink md:max-w-xs"
             >
               <option value="">Choose filament type</option>
               {% for option in valid_filament_types %}
                 <option value="{{ option }}" {% if option == filament_type %}selected{% endif %}>{{ option }}</option>
               {% endfor %}
             </select>
+            <p class="mt-1 text-xs text-slate-500">Spoolman <span class="font-mono">ams_filament_type</span> → Orca <span class="font-mono">filament_type</span></p>
           </div>
-        </div>
+        </section>
 
-        <div class="grid gap-3 md:grid-cols-3">
-          <div>
-            <label for="nozzle-temp-min" class="mb-1 block text-xs text-slate-300">Nozzle temp min</label>
-            <div class="mb-1 text-[11px] text-slate-500">Spoolman <span class="font-mono">nozzle_temp</span> -> Orca <span class="font-mono">nozzle_temperature_range_low</span>. Lower bound of the supported nozzle range.</div>
-            <input
-              id="nozzle-temp-min"
-              name="nozzle_temp_min"
-              type="number"
-              min="0"
-              value="{{ nozzle_temp_min if nozzle_temp_min is not none else '' }}"
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            />
+        <section class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Nozzle temperature <span class="text-slate-600">(°C)</span></h3>
+          <div class="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+            <div>
+              <label for="nozzle-temp-min" class="mb-1 block text-sm font-medium text-slate-200" title="Orca nozzle_temperature_range_low. Lower bound of the supported nozzle range.">Range min</label>
+              <input
+                id="nozzle-temp-min"
+                name="nozzle_temp_min"
+                type="number"
+                min="0"
+                value="{{ nozzle_temp_min if nozzle_temp_min is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="nozzle_temp_min">{% if base_values.nozzle_temp_min is not none %}{{ base_values.nozzle_temp_min }} °C{% else %}—{% endif %}</span></p>
+            </div>
+            <div>
+              <label for="nozzle-temp-max" class="mb-1 block text-sm font-medium text-slate-200" title="Orca nozzle_temperature_range_high. Upper bound of the supported nozzle range.">Range max</label>
+              <input
+                id="nozzle-temp-max"
+                name="nozzle_temp_max"
+                type="number"
+                min="0"
+                value="{{ nozzle_temp_max if nozzle_temp_max is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="nozzle_temp_max">{% if base_values.nozzle_temp_max is not none %}{{ base_values.nozzle_temp_max }} °C{% else %}—{% endif %}</span></p>
+            </div>
+            <div>
+              <label for="nozzle-temperature" class="mb-1 block text-sm font-medium text-slate-200" title="Orca nozzle_temperature. Target extrusion temperature.">Normal</label>
+              <input
+                id="nozzle-temperature"
+                name="nozzle_temperature"
+                type="number"
+                min="0"
+                value="{{ nozzle_temperature if nozzle_temperature is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="nozzle_temperature">{% if base_values.nozzle_temperature is not none %}{{ base_values.nozzle_temperature }} °C{% else %}—{% endif %}</span></p>
+            </div>
+            <div>
+              <label for="nozzle-temperature-initial-layer" class="mb-1 block text-sm font-medium text-slate-200" title="Orca nozzle_temperature_initial_layer. Extrusion temperature for the first layer.">Initial layer</label>
+              <input
+                id="nozzle-temperature-initial-layer"
+                name="nozzle_temperature_initial_layer"
+                type="number"
+                min="0"
+                value="{{ nozzle_temperature_initial_layer if nozzle_temperature_initial_layer is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="nozzle_temperature_initial_layer">{% if base_values.nozzle_temperature_initial_layer is not none %}{{ base_values.nozzle_temperature_initial_layer }} °C{% else %}—{% endif %}</span></p>
+            </div>
           </div>
-          <div>
-            <label for="nozzle-temp-max" class="mb-1 block text-xs text-slate-300">Nozzle temp max</label>
-            <div class="mb-1 text-[11px] text-slate-500">Spoolman <span class="font-mono">nozzle_temp</span> -> Orca <span class="font-mono">nozzle_temperature_range_high</span>. Upper bound of the supported nozzle range.</div>
-            <input
-              id="nozzle-temp-max"
-              name="nozzle_temp_max"
-              type="number"
-              min="0"
-              value="{{ nozzle_temp_max if nozzle_temp_max is not none else '' }}"
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            />
-          </div>
-          <div>
-            <label for="bed-temp" class="mb-1 block text-xs text-slate-300">Bed temp</label>
-            <div class="mb-1 text-[11px] text-slate-500">Spoolman <span class="font-mono">bed_temp</span> -> Orca <span class="font-mono">hot_plate_temp</span>. Target build-plate temperature.</div>
-            <input
-              id="bed-temp"
-              name="bed_temp"
-              type="number"
-              min="0"
-              value="{{ bed_temp if bed_temp is not none else '' }}"
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            />
-          </div>
-          <div>
-            <label for="print-speed-min" class="mb-1 block text-xs text-slate-300">Print speed min</label>
-            <div class="mb-1 text-[11px] text-slate-500">Spoolman <span class="font-mono">printing_speed</span> -> Orca <span class="font-mono">slow_down_min_speed</span>. Lower speed value for slowdown behavior.</div>
-            <input
-              id="print-speed-min"
-              name="print_speed_min"
-              type="number"
-              min="0"
-              value="{{ print_speed_min if print_speed_min is not none else '' }}"
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            />
-          </div>
-          <div>
-            <label for="print-speed-max" class="mb-1 block text-xs text-slate-300">Print speed max</label>
-            <div class="mb-1 text-[11px] text-slate-500">Upper bound of the Spoolman <span class="font-mono">printing_speed</span> range. Kept for reference only — not written to Orca (unit mismatch: mm/s vs mm³/s).</div>
-            <input
-              id="print-speed-max"
-              name="print_speed_max"
-              type="number"
-              min="0"
-              value="{{ print_speed_max if print_speed_max is not none else '' }}"
-              class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
-            />
-          </div>
-        </div>
+        </section>
 
-        <div class="flex justify-end gap-2">
+        <section class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Bed temperature <span class="text-slate-600">(°C)</span></h3>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label for="hot-plate-temp" class="mb-1 block text-sm font-medium text-slate-200" title="Orca hot_plate_temp. Target build-plate temperature.">Normal</label>
+              <input
+                id="hot-plate-temp"
+                name="hot_plate_temp"
+                type="number"
+                min="0"
+                value="{{ hot_plate_temp if hot_plate_temp is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="hot_plate_temp">{% if base_values.hot_plate_temp is not none %}{{ base_values.hot_plate_temp }} °C{% else %}—{% endif %}</span></p>
+            </div>
+            <div>
+              <label for="hot-plate-temp-initial-layer" class="mb-1 block text-sm font-medium text-slate-200" title="Orca hot_plate_temp_initial_layer. Build-plate temperature for the first layer.">Initial layer</label>
+              <input
+                id="hot-plate-temp-initial-layer"
+                name="hot_plate_temp_initial_layer"
+                type="number"
+                min="0"
+                value="{{ hot_plate_temp_initial_layer if hot_plate_temp_initial_layer is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="hot_plate_temp_initial_layer">{% if base_values.hot_plate_temp_initial_layer is not none %}{{ base_values.hot_plate_temp_initial_layer }} °C{% else %}—{% endif %}</span></p>
+            </div>
+          </div>
+        </section>
+
+        <section class="space-y-3">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Print speed <span class="text-slate-600">(mm/s)</span></h3>
+          <div class="grid gap-3 md:grid-cols-2">
+            <div>
+              <label for="print-speed-min" class="mb-1 block text-sm font-medium text-slate-200" title="Orca slow_down_min_speed. Lower speed value for slowdown behavior.">Min</label>
+              <input
+                id="print-speed-min"
+                name="print_speed_min"
+                type="number"
+                min="0"
+                value="{{ print_speed_min if print_speed_min is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="print_speed_min">{% if base_values.print_speed_min is not none %}{{ base_values.print_speed_min }} mm/s{% else %}—{% endif %}</span></p>
+            </div>
+            <div>
+              <label for="print-speed-max" class="mb-1 block text-sm font-medium text-slate-200" title="Kept for reference only — not written to Orca (unit mismatch: mm/s vs mm³/s).">Max <span class="text-slate-500 font-normal">(reference only)</span></label>
+              <input
+                id="print-speed-max"
+                name="print_speed_max"
+                type="number"
+                min="0"
+                value="{{ print_speed_max if print_speed_max is not none else '' }}"
+                class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+              />
+              <p class="mt-1 text-xs text-slate-500">Not written to Orca</p>
+            </div>
+          </div>
+        </section>
+
+        <div class="flex justify-end gap-2 border-t border-slate-800 pt-4">
           <button
             type="button"
             class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800"
@@ -192,12 +256,48 @@
           </button>
           <button
             type="submit"
-            class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
+            class="rounded-md border border-cyan-700 bg-cyan-900/20 px-4 py-1.5 text-sm font-medium text-cyan-100 hover:bg-cyan-900/40"
           >
             Import Profile
           </button>
         </div>
       </form>
+
+      <script id="create-profile-base-values" type="application/json">{{ base_values_map_json | safe }}</script>
+      <script>
+        (function () {
+          const dataEl = document.getElementById("create-profile-base-values");
+          const select = document.getElementById("base-setting-id");
+          if (!dataEl || !select) return;
+          let baseMap;
+          try {
+            baseMap = JSON.parse(dataEl.textContent || "{}");
+          } catch (err) {
+            return;
+          }
+          const units = {
+            nozzle_temp_min: "°C",
+            nozzle_temp_max: "°C",
+            nozzle_temperature: "°C",
+            nozzle_temperature_initial_layer: "°C",
+            hot_plate_temp: "°C",
+            hot_plate_temp_initial_layer: "°C",
+            print_speed_min: "mm/s",
+          };
+          select.addEventListener("change", function () {
+            const values = baseMap[select.value] || {};
+            document.querySelectorAll("[data-base-value]").forEach(function (el) {
+              const key = el.getAttribute("data-base-value");
+              const value = values[key];
+              if (value === null || value === undefined || value === "") {
+                el.textContent = "—";
+              } else {
+                el.textContent = value + " " + (units[key] || "");
+              }
+            });
+          });
+        })();
+      </script>
       {% else %}
         <div class="mt-4 rounded-md border border-amber-700/60 bg-amber-900/20 p-3 text-sm text-amber-100">
           No base filament profiles are currently loaded. Reload Orca profiles and try again.

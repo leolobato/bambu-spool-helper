@@ -192,6 +192,12 @@ class OrcaSlicerClient:
         nozzle_temp_max = OrcaSlicerClient._extract_first_int(resolved, "nozzle_temperature_range_high")
 
         bed_temp = OrcaSlicerClient._extract_first_int(resolved, "hot_plate_temp")
+        bed_temp_initial_layer = OrcaSlicerClient._extract_first_int(
+            resolved, "hot_plate_temp_initial_layer"
+        )
+        slow_down_min_speed = OrcaSlicerClient._extract_first_int(
+            resolved, "slow_down_min_speed"
+        )
 
         drying_values = OrcaSlicerClient._extract_int_list(
             resolved,
@@ -229,6 +235,8 @@ class OrcaSlicerClient:
             nozzle_temp_max=nozzle_temp_max,
             bed_temp_min=bed_temp,
             bed_temp_max=bed_temp,
+            bed_temp_initial_layer=bed_temp_initial_layer or None,
+            print_speed_min=slow_down_min_speed or None,
             drying_temp_min=drying_temp_min,
             drying_temp_max=drying_temp_max,
             drying_time=OrcaSlicerClient._extract_first_int(resolved, "filament_dev_ams_drying_time"),

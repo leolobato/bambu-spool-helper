@@ -594,18 +594,52 @@ def _base_profile_options(profiles: list[FilamentProfileResponse]) -> list[dict[
     return options
 
 
+def _profile_base_values(profile: FilamentProfileResponse | None) -> dict[str, int | None]:
+    if profile is None:
+        return {
+            "nozzle_temp_min": None,
+            "nozzle_temp_max": None,
+            "nozzle_temperature": None,
+            "nozzle_temperature_initial_layer": None,
+            "hot_plate_temp": None,
+            "hot_plate_temp_initial_layer": None,
+            "print_speed_min": None,
+        }
+    return {
+        "nozzle_temp_min": profile.nozzle_temp_min or None,
+        "nozzle_temp_max": profile.nozzle_temp_max or None,
+        "nozzle_temperature": profile.extruder_temp,
+        "nozzle_temperature_initial_layer": profile.extruder_temp_initial_layer,
+        "hot_plate_temp": profile.bed_temp_min or None,
+        "hot_plate_temp_initial_layer": profile.bed_temp_initial_layer,
+        "print_speed_min": profile.print_speed_min,
+    }
+
+
+def _all_base_values_map(profiles: list[FilamentProfileResponse]) -> dict[str, dict[str, int | None]]:
+    return {
+        profile.setting_id: _profile_base_values(profile)
+        for profile in profiles
+        if profile.setting_id.strip()
+    }
+
+
 def _render_create_profile_modal(
     request: Request,
     *,
     filament: SpoolmanFilament,
     machine_id: str,
     base_options: list[dict[str, str]],
+    profiles: list[FilamentProfileResponse],
     selected_base_setting_id: str,
     suggested_name: str,
     filament_type: str,
     nozzle_temp_min: int | None,
     nozzle_temp_max: int | None,
-    bed_temp: int | None,
+    nozzle_temperature: int | None,
+    nozzle_temperature_initial_layer: int | None,
+    hot_plate_temp: int | None,
+    hot_plate_temp_initial_layer: int | None,
     print_speed_min: int | None,
     print_speed_max: int | None,
     error_message: str = "",
@@ -613,6 +647,9 @@ def _render_create_profile_modal(
     import_result: dict[str, Any] | None = None,
     headers: dict[str, str] | None = None,
 ) -> HTMLResponse:
+    selected_profile = _find_profile_by_setting_id(profiles, selected_base_setting_id)
+    base_values = _profile_base_values(selected_profile)
+    base_values_map = _all_base_values_map(profiles)
     return templates.TemplateResponse(
         request,
         "partials/create_profile_from_filament.html",
@@ -627,13 +664,18 @@ def _render_create_profile_modal(
             "valid_filament_types": sorted(VALID_TRAY_TYPES),
             "nozzle_temp_min": nozzle_temp_min,
             "nozzle_temp_max": nozzle_temp_max,
-            "bed_temp": bed_temp,
+            "nozzle_temperature": nozzle_temperature,
+            "nozzle_temperature_initial_layer": nozzle_temperature_initial_layer,
+            "hot_plate_temp": hot_plate_temp,
+            "hot_plate_temp_initial_layer": hot_plate_temp_initial_layer,
             "print_speed_min": print_speed_min,
             "print_speed_max": print_speed_max,
+            "base_values": base_values,
+            "base_values_map_json": json.dumps(base_values_map),
             "field_mappings": _build_create_profile_field_mappings(
                 filament_type=filament_type,
                 nozzle_temp=(nozzle_temp_min, nozzle_temp_max),
-                bed_temp=bed_temp,
+                bed_temp=hot_plate_temp,
                 printing_speed=(print_speed_min, print_speed_max),
             ),
             "error_message": error_message,
@@ -1261,19 +1303,29 @@ async def create_profile_modal(
     nozzle_min, nozzle_max = _normalize_optional_range(_decode_extra_range(extra, "nozzle_temp"))
     bed_min, bed_max = _decode_extra_range(extra, "bed_temp")
     print_speed_min, print_speed_max = _normalize_optional_range(_decode_extra_range(extra, "printing_speed"))
-    bed_temp = bed_min if bed_min is not None else bed_max
+    hot_plate_temp = bed_min if bed_min is not None else bed_max
+    hot_plate_temp_initial_layer = hot_plate_temp
+    nozzle_midpoint = (
+        (nozzle_min + nozzle_max) // 2
+        if nozzle_min is not None and nozzle_max is not None
+        else None
+    )
 
     return _render_create_profile_modal(
         request,
         filament=filament,
         machine_id=machine_id,
         base_options=base_options,
+        profiles=profiles,
         selected_base_setting_id=selected_base_setting_id,
         suggested_name=_suggest_profile_name(filament),
         filament_type=inferred_filament_type,
         nozzle_temp_min=nozzle_min,
         nozzle_temp_max=nozzle_max,
-        bed_temp=bed_temp,
+        nozzle_temperature=nozzle_midpoint,
+        nozzle_temperature_initial_layer=nozzle_midpoint,
+        hot_plate_temp=hot_plate_temp,
+        hot_plate_temp_initial_layer=hot_plate_temp_initial_layer,
         print_speed_min=print_speed_min,
         print_speed_max=print_speed_max,
     )
@@ -1289,7 +1341,10 @@ async def create_profile_submit(
     filament_type: str = Form(...),
     nozzle_temp_min: str = Form(default=""),
     nozzle_temp_max: str = Form(default=""),
-    bed_temp: str = Form(default=""),
+    nozzle_temperature: str = Form(default=""),
+    nozzle_temperature_initial_layer: str = Form(default=""),
+    hot_plate_temp: str = Form(default=""),
+    hot_plate_temp_initial_layer: str = Form(default=""),
     print_speed_min: str = Form(default=""),
     print_speed_max: str = Form(default=""),
 ) -> HTMLResponse:
@@ -1311,7 +1366,10 @@ async def create_profile_submit(
 
     nozzle_min = _safe_int(nozzle_temp_min)
     nozzle_max = _safe_int(nozzle_temp_max)
-    bed = _safe_int(bed_temp)
+    nozzle_temp = _safe_int(nozzle_temperature)
+    nozzle_temp_initial = _safe_int(nozzle_temperature_initial_layer)
+    hot_plate = _safe_int(hot_plate_temp)
+    hot_plate_initial = _safe_int(hot_plate_temp_initial_layer)
     speed_min = _safe_int(print_speed_min)
     speed_max = _safe_int(print_speed_max)
 
@@ -1335,12 +1393,16 @@ async def create_profile_submit(
             filament=filament,
             machine_id=machine_id,
             base_options=base_options,
+            profiles=profiles,
             selected_base_setting_id=clean_base,
             suggested_name=clean_name,
             filament_type=clean_type,
             nozzle_temp_min=nozzle_min,
             nozzle_temp_max=nozzle_max,
-            bed_temp=bed,
+            nozzle_temperature=nozzle_temp,
+            nozzle_temperature_initial_layer=nozzle_temp_initial,
+            hot_plate_temp=hot_plate,
+            hot_plate_temp_initial_layer=hot_plate_initial,
             print_speed_min=speed_min,
             print_speed_max=speed_max,
             error_message=error_message,
@@ -1356,12 +1418,18 @@ async def create_profile_submit(
         low, high = sorted((nozzle_min, nozzle_max))
         payload["nozzle_temperature_range_low"] = [low]
         payload["nozzle_temperature_range_high"] = [high]
-        midpoint = (low + high) // 2
-        payload["nozzle_temperature"] = [midpoint]
-        payload["nozzle_temperature_initial_layer"] = [midpoint]
 
-    if bed is not None:
-        payload["hot_plate_temp"] = [bed]
+    if nozzle_temp is not None:
+        payload["nozzle_temperature"] = [nozzle_temp]
+
+    if nozzle_temp_initial is not None:
+        payload["nozzle_temperature_initial_layer"] = [nozzle_temp_initial]
+
+    if hot_plate is not None:
+        payload["hot_plate_temp"] = [hot_plate]
+
+    if hot_plate_initial is not None:
+        payload["hot_plate_temp_initial_layer"] = [hot_plate_initial]
 
     if speed_min is not None and speed_max is not None:
         low, _ = sorted((speed_min, speed_max))
@@ -1376,12 +1444,16 @@ async def create_profile_submit(
             filament=filament,
             machine_id=machine_id,
             base_options=base_options,
+            profiles=profiles,
             selected_base_setting_id=clean_base,
             suggested_name=clean_name,
             filament_type=clean_type,
             nozzle_temp_min=nozzle_min,
             nozzle_temp_max=nozzle_max,
-            bed_temp=bed,
+            nozzle_temperature=nozzle_temp,
+            nozzle_temperature_initial_layer=nozzle_temp_initial,
+            hot_plate_temp=hot_plate,
+            hot_plate_temp_initial_layer=hot_plate_initial,
             print_speed_min=speed_min,
             print_speed_max=speed_max,
             error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
@@ -1392,27 +1464,50 @@ async def create_profile_submit(
             filament=filament,
             machine_id=machine_id,
             base_options=base_options,
+            profiles=profiles,
             selected_base_setting_id=clean_base,
             suggested_name=clean_name,
             filament_type=clean_type,
             nozzle_temp_min=nozzle_min,
             nozzle_temp_max=nozzle_max,
-            bed_temp=bed,
+            nozzle_temperature=nozzle_temp,
+            nozzle_temperature_initial_layer=nozzle_temp_initial,
+            hot_plate_temp=hot_plate,
+            hot_plate_temp_initial_layer=hot_plate_initial,
             print_speed_min=speed_min,
             print_speed_max=speed_max,
             error_message=f"Import request failed: {exc}",
         )
 
-    success_headers = {"HX-Trigger": json.dumps({"profiles-imported": True})}
     imported_name = str(result.get("name", "")).strip()
     imported_filament_id = str(result.get("filament_id", "")).strip()
     success_message = f"Imported profile {imported_name or imported_filament_id or 'successfully'}."
+
+    link_trigger_events: dict[str, Any] = {"profiles-imported": True}
+    if filament.is_linked:
+        success_message += f" Filament already linked to {filament.ams_filament_id}; kept existing link."
+    elif imported_filament_id and clean_type:
+        try:
+            await request.app.state.spoolman.link_filament(
+                filament_id=filament_id,
+                ams_filament_id=imported_filament_id,
+                ams_filament_type=clean_type,
+            )
+        except httpx.HTTPError as exc:
+            logger.warning("Failed to auto-link filament %s to new profile: %s", filament_id, exc)
+            success_message += f" (Auto-link failed: {exc})"
+        else:
+            success_message += f" Linked filament to {imported_filament_id}."
+            link_trigger_events["filament-selected"] = {"filamentId": filament.id}
+
+    success_headers = {"HX-Trigger": json.dumps(link_trigger_events)}
 
     return _render_create_profile_modal(
         request,
         filament=filament,
         machine_id=machine_id,
         base_options=base_options,
+        profiles=profiles,
         selected_base_setting_id=clean_base,
         suggested_name=clean_name,
         filament_type=clean_type,
