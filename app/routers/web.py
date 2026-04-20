@@ -277,6 +277,7 @@ def _build_linked_profile_validation(
     profiles: list[FilamentProfileResponse],
 ) -> dict[str, Any]:
     linked_filaments = [filament for filament in filaments if filament.is_linked]
+    unlinked_filaments = [filament for filament in filaments if not filament.is_linked]
     matched: list[dict[str, Any]] = []
     missing: list[dict[str, Any]] = []
 
@@ -295,12 +296,16 @@ def _build_linked_profile_validation(
             "profile": profile,
         })
 
+    unlinked = [{"filament": filament} for filament in unlinked_filaments]
+
     return {
         "linked_count": len(linked_filaments),
         "matched_count": len(matched),
         "missing_count": len(missing),
+        "unlinked_count": len(unlinked_filaments),
         "matched": matched,
         "missing": missing,
+        "unlinked": unlinked,
     }
 
 

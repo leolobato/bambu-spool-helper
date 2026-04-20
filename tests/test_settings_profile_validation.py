@@ -62,5 +62,42 @@ class SettingsProfileValidationTests(unittest.TestCase):
         self.assertEqual(validation["missing"][0]["linked_filament_id"], "PLA-404")
 
 
+    def test_validation_includes_unlinked_filaments(self) -> None:
+        profiles: list[FilamentProfileResponse] = []
+        filaments = [
+            SpoolmanFilament(
+                id=1,
+                name="Linked PLA",
+                material="PLA",
+                vendor=SpoolmanVendor(name="eSUN"),
+                extra={
+                    "ams_filament_id": '"PLA-001"',
+                    "ams_filament_type": '"PLA"',
+                },
+            ),
+            SpoolmanFilament(
+                id=2,
+                name="Never linked",
+                material="PLA",
+                vendor=SpoolmanVendor(name="eSUN"),
+                extra={},
+            ),
+            SpoolmanFilament(
+                id=3,
+                name="Partially linked",
+                material="PLA",
+                vendor=SpoolmanVendor(name="eSUN"),
+                extra={"ams_filament_id": '"PLA-777"'},
+            ),
+        ]
+
+        validation = _build_linked_profile_validation(filaments, profiles)
+
+        self.assertEqual(validation["linked_count"], 1)
+        self.assertEqual(validation["unlinked_count"], 2)
+        unlinked_ids = sorted(item["filament"].id for item in validation["unlinked"])
+        self.assertEqual(unlinked_ids, [2, 3])
+
+
 if __name__ == "__main__":
     unittest.main()
