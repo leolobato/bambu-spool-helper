@@ -960,25 +960,32 @@ async def settings_ensure_spoolman_fields(
     )
 
 
-async def _import_process_profile_flow(
+async def _read_uploaded_profile_json(
     request: Request,
-    *,
     profile_file: UploadFile | None,
+    *,
     machine_id: str,
-) -> HTMLResponse:
+    kind: str,
+) -> dict[str, Any] | HTMLResponse:
+    """Parse an uploaded `.json` profile into a dict.
+
+    On any validation error, renders the import modal with the appropriate
+    error message and returns the HTMLResponse directly. Callers must check
+    the return type with `isinstance(..., HTMLResponse)`.
+    """
     filename = profile_file.filename if profile_file else ""
     if not filename:
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
-            kind="process",
+            kind=kind,
             error_message="Please choose a JSON file.",
         )
     if not filename.lower().endswith(".json"):
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
-            kind="process",
+            kind=kind,
             error_message="Only .json profile files are supported.",
         )
 
@@ -991,7 +998,7 @@ async def _import_process_profile_flow(
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
-            kind="process",
+            kind=kind,
             error_message="Uploaded file is empty.",
         )
 
@@ -1001,14 +1008,14 @@ async def _import_process_profile_flow(
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
-            kind="process",
+            kind=kind,
             error_message="Profile file must be UTF-8 encoded JSON.",
         )
     except json.JSONDecodeError:
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
-            kind="process",
+            kind=kind,
             error_message="Invalid JSON file.",
         )
 
@@ -1016,9 +1023,25 @@ async def _import_process_profile_flow(
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
-            kind="process",
+            kind=kind,
             error_message="Profile JSON must be an object.",
         )
+
+    return payload
+
+
+async def _import_process_profile_flow(
+    request: Request,
+    *,
+    profile_file: UploadFile | None,
+    machine_id: str,
+) -> HTMLResponse:
+    result = await _read_uploaded_profile_json(
+        request, profile_file, machine_id=machine_id, kind="process",
+    )
+    if isinstance(result, HTMLResponse):
+        return result
+    payload = result
 
     try:
         resolved_preview = await request.app.state.orcaslicer.resolve_import_process_profile(payload)
@@ -1130,34 +1153,12 @@ async def import_profile_upload(
             )
         _set_payload_filament_type(payload, normalized_filament_type)
     else:
-        filename = profile_file.filename if profile_file else ""
-        if not filename:
-            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Please choose a JSON file.")
-        if not filename.lower().endswith(".json"):
-            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Only .json profile files are supported.")
-
-        try:
-            raw = await profile_file.read()
-        finally:
-            await profile_file.close()
-
-        if not raw:
-            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Uploaded file is empty.")
-
-        try:
-            payload = json.loads(raw.decode("utf-8"))
-        except UnicodeDecodeError:
-            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Profile file must be UTF-8 encoded JSON.")
-        except json.JSONDecodeError:
-            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Invalid JSON file.")
-
-        if not isinstance(payload, dict):
-            return _render_import_profile_modal(
-                request,
-                machine_id=machine_id,
-                kind="filament",
-                error_message="Profile JSON must be an object.",
-            )
+        result = await _read_uploaded_profile_json(
+            request, profile_file, machine_id=machine_id, kind="filament",
+        )
+        if isinstance(result, HTMLResponse):
+            return result
+        payload = result
 
         try:
             resolved_preview = await request.app.state.orcaslicer.resolve_import_profile(payload)
