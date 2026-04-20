@@ -41,6 +41,24 @@ class OrcaSlicerClient:
         response.raise_for_status()
         return response.json()
 
+    async def import_process_profile(
+        self,
+        data: dict[str, Any],
+        *,
+        replace: bool = False,
+    ) -> dict[str, Any]:
+        params: dict[str, str] = {}
+        if replace:
+            params["replace"] = "true"
+        response = await self._client.post("/profiles/processes", json=data, params=params)
+        response.raise_for_status()
+        return response.json()
+
+    async def resolve_import_process_profile(self, data: dict[str, Any]) -> dict[str, Any]:
+        response = await self._client.post("/profiles/processes/resolve-import", json=data)
+        response.raise_for_status()
+        return response.json()
+
     async def reload_profiles(self, machine_id: str | None = None) -> tuple[dict[str, Any], list[FilamentProfileResponse]]:
         response = await self._client.post("/profiles/reload")
         response.raise_for_status()
