@@ -17,14 +17,21 @@
             <dt class="w-28 text-slate-400">Name</dt>
             <dd>{{ import_result.get("name", "-") }}</dd>
           </div>
-          <div class="flex gap-2">
-            <dt class="w-28 text-slate-400">Type</dt>
-            <dd>{{ import_result.get("filament_type", "-") }}</dd>
-          </div>
-          <div class="flex gap-2">
-            <dt class="w-28 text-slate-400">Filament ID</dt>
-            <dd class="font-mono">{{ import_result.get("filament_id", "-") }}</dd>
-          </div>
+          {% if kind == "process" %}
+            <div class="flex gap-2">
+              <dt class="w-28 text-slate-400">Setting ID</dt>
+              <dd class="font-mono">{{ import_result.get("setting_id", "-") }}</dd>
+            </div>
+          {% else %}
+            <div class="flex gap-2">
+              <dt class="w-28 text-slate-400">Type</dt>
+              <dd>{{ import_result.get("filament_type", "-") }}</dd>
+            </div>
+            <div class="flex gap-2">
+              <dt class="w-28 text-slate-400">Filament ID</dt>
+              <dd class="font-mono">{{ import_result.get("filament_id", "-") }}</dd>
+            </div>
+          {% endif %}
         </dl>
       {% endif %}
       <div class="mt-5 flex justify-end">

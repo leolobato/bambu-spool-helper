@@ -703,6 +703,7 @@ def _render_import_profile_modal(
     request: Request,
     *,
     machine_id: str = "",
+    kind: str = "filament",
     error_message: str = "",
     success_message: str = "",
     import_result: dict[str, Any] | None = None,
@@ -718,6 +719,7 @@ def _render_import_profile_modal(
         {
             "request": request,
             "machine_id": machine_id,
+            "kind": kind if kind in {"filament", "process"} else "filament",
             "error_message": error_message,
             "success_message": success_message,
             "import_result": import_result or {},
@@ -855,9 +857,10 @@ async def index(
 async def import_profile_modal(
     request: Request,
     machine: str = Query(default=""),
+    kind: str = Query(default="filament"),
 ) -> HTMLResponse:
     _, machine_id = await _machine_context(request, machine)
-    return _render_import_profile_modal(request, machine_id=machine_id)
+    return _render_import_profile_modal(request, machine_id=machine_id, kind=kind)
 
 
 @router.get("/settings")
@@ -957,6 +960,123 @@ async def settings_ensure_spoolman_fields(
     )
 
 
+async def _import_process_profile_flow(
+    request: Request,
+    *,
+    profile_file: UploadFile | None,
+    machine_id: str,
+) -> HTMLResponse:
+    filename = profile_file.filename if profile_file else ""
+    if not filename:
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message="Please choose a JSON file.",
+        )
+    if not filename.lower().endswith(".json"):
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message="Only .json profile files are supported.",
+        )
+
+    try:
+        raw = await profile_file.read()
+    finally:
+        await profile_file.close()
+
+    if not raw:
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message="Uploaded file is empty.",
+        )
+
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except UnicodeDecodeError:
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message="Profile file must be UTF-8 encoded JSON.",
+        )
+    except json.JSONDecodeError:
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message="Invalid JSON file.",
+        )
+
+    if not isinstance(payload, dict):
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message="Profile JSON must be an object.",
+        )
+
+    try:
+        resolved_preview = await request.app.state.orcaslicer.resolve_import_process_profile(payload)
+    except httpx.HTTPStatusError as exc:
+        error_detail = exc.response.text.strip() or str(exc)
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message=f"Profile resolution failed ({exc.response.status_code}): {error_detail}",
+        )
+    except httpx.HTTPError as exc:
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message=f"Profile resolution request failed: {exc}",
+        )
+
+    resolved_payload = resolved_preview.get("resolved_payload")
+    if not isinstance(resolved_payload, dict):
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message="Resolved process payload is invalid.",
+        )
+
+    try:
+        result = await request.app.state.orcaslicer.import_process_profile(dict(resolved_payload))
+    except httpx.HTTPStatusError as exc:
+        error_detail = exc.response.text.strip() or str(exc)
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
+        )
+    except httpx.HTTPError as exc:
+        return _render_import_profile_modal(
+            request,
+            machine_id=machine_id,
+            kind="process",
+            error_message=f"Import request failed: {exc}",
+        )
+
+    profile_name = str(result.get("name", "")).strip()
+    setting_id = str(result.get("setting_id") or "").strip()
+    success_message = f"Imported process profile {profile_name or setting_id or 'successfully'}."
+    return _render_import_profile_modal(
+        request,
+        machine_id=machine_id,
+        kind="process",
+        success_message=success_message,
+        import_result=result,
+    )
+
+
 @router.post("/import-profile")
 async def import_profile_upload(
     request: Request,
@@ -964,8 +1084,19 @@ async def import_profile_upload(
     machine: str = Form(default=""),
     payload_json: str = Form(default=""),
     filament_type: str = Form(default=""),
+    kind: str = Form(default="filament"),
 ) -> HTMLResponse:
     _, machine_id = await _machine_context(request, machine)
+    normalized_kind = kind if kind in {"filament", "process"} else "filament"
+
+    if normalized_kind == "process":
+        return await _import_process_profile_flow(
+            request,
+            profile_file=profile_file,
+            machine_id=machine_id,
+        )
+
+    # kind == "filament" — existing flow, unchanged
     if payload_json.strip():
         try:
             payload = json.loads(payload_json)
@@ -973,6 +1104,7 @@ async def import_profile_upload(
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message="Pending import payload is invalid. Upload the JSON file again.",
             )
 
@@ -980,6 +1112,7 @@ async def import_profile_upload(
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message="Pending import payload is invalid. Upload the JSON file again.",
             )
 
@@ -988,6 +1121,7 @@ async def import_profile_upload(
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message="Choose a valid filament type before importing.",
                 pending_import_payload=payload_json,
                 pending_profile_name=str(payload.get("name", "")).strip(),
@@ -998,9 +1132,9 @@ async def import_profile_upload(
     else:
         filename = profile_file.filename if profile_file else ""
         if not filename:
-            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Please choose a JSON file.")
+            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Please choose a JSON file.")
         if not filename.lower().endswith(".json"):
-            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Only .json profile files are supported.")
+            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Only .json profile files are supported.")
 
         try:
             raw = await profile_file.read()
@@ -1008,19 +1142,20 @@ async def import_profile_upload(
             await profile_file.close()
 
         if not raw:
-            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Uploaded file is empty.")
+            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Uploaded file is empty.")
 
         try:
             payload = json.loads(raw.decode("utf-8"))
         except UnicodeDecodeError:
-            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Profile file must be UTF-8 encoded JSON.")
+            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Profile file must be UTF-8 encoded JSON.")
         except json.JSONDecodeError:
-            return _render_import_profile_modal(request, machine_id=machine_id, error_message="Invalid JSON file.")
+            return _render_import_profile_modal(request, machine_id=machine_id, kind="filament", error_message="Invalid JSON file.")
 
         if not isinstance(payload, dict):
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message="Profile JSON must be an object.",
             )
 
@@ -1031,12 +1166,14 @@ async def import_profile_upload(
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message=f"Profile resolution failed ({exc.response.status_code}): {error_detail}",
             )
         except httpx.HTTPError as exc:
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message=f"Profile resolution request failed: {exc}",
             )
 
@@ -1045,6 +1182,7 @@ async def import_profile_upload(
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message="Resolved profile payload is invalid.",
             )
 
@@ -1054,6 +1192,7 @@ async def import_profile_upload(
             return _render_import_profile_modal(
                 request,
                 machine_id=machine_id,
+                kind="filament",
                 error_message="Resolved profile is missing a valid filament type. Choose one before importing.",
                 pending_import_payload=json.dumps(payload),
                 pending_profile_name=str(resolved_preview.get("name", "")).strip(),
@@ -1070,12 +1209,14 @@ async def import_profile_upload(
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
+            kind="filament",
             error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
         )
     except httpx.HTTPError as exc:
         return _render_import_profile_modal(
             request,
             machine_id=machine_id,
+            kind="filament",
             error_message=f"Import request failed: {exc}",
         )
 
@@ -1086,6 +1227,7 @@ async def import_profile_upload(
     return _render_import_profile_modal(
         request,
         machine_id=machine_id,
+        kind="filament",
         success_message=success_message,
         import_result=result,
         headers=headers,
