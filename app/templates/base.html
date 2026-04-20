@@ -124,6 +124,31 @@
           swap: "innerHTML"
         });
       });
+
+      document.body.addEventListener("filament-updated", function (event) {
+        const detail = document.getElementById("filament-detail");
+        if (!detail) {
+          return;
+        }
+
+        const filamentId = event.detail && event.detail.filamentId;
+        if (!filamentId) {
+          return;
+        }
+
+        const params = new URLSearchParams();
+        const machineInput = document.getElementById("selected-machine");
+        if (machineInput && machineInput.value) {
+          params.set("machine", machineInput.value);
+        }
+        const query = params.toString();
+        const url = "/web/filament/" + encodeURIComponent(String(filamentId)) + (query ? "?" + query : "");
+
+        htmx.ajax("GET", url, {
+          target: "#filament-detail",
+          swap: "innerHTML"
+        });
+      });
     </script>
   </body>
 </html>

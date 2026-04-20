@@ -1425,6 +1425,7 @@ async def create_profile_submit(
         else:
             success_message += f" Linked filament to {imported_filament_id}."
             link_trigger_events["filament-selected"] = {"filamentId": filament.id}
+            link_trigger_events["filament-updated"] = {"filamentId": filament.id}
 
     success_headers = {"HX-Trigger": json.dumps(link_trigger_events)}
 
