@@ -9,7 +9,6 @@ class SpoolmanFieldValidationTests(unittest.TestCase):
         fields = [
             {"key": "nozzle_temp", "name": "Nozzle Temperature", "field_type": "integer_range", "unit": "°C"},
             {"key": "bed_temp", "name": "Bed Temperature", "field_type": "integer_range", "unit": "°C"},
-            {"key": "printing_speed", "name": "Printing Speed", "field_type": "integer_range", "unit": "mm/s"},
             {"key": "ams_filament_type", "name": "ams_filament_type", "field_type": "text"},
             {"key": "ams_filament_id", "name": "ams_filament_id", "field_type": "text"},
         ]
@@ -17,7 +16,7 @@ class SpoolmanFieldValidationTests(unittest.TestCase):
         validation = SpoolmanClient._validate_field_specs(fields, SpoolmanClient.REQUIRED_SETTINGS_FILAMENT_FIELDS)
 
         self.assertTrue(validation["is_valid"])
-        self.assertEqual(validation["valid_count"], 5)
+        self.assertEqual(validation["valid_count"], 4)
         self.assertEqual(validation["missing_count"], 0)
         self.assertEqual(validation["invalid_count"], 0)
 
@@ -32,12 +31,12 @@ class SpoolmanFieldValidationTests(unittest.TestCase):
 
         self.assertFalse(validation["is_valid"])
         self.assertEqual(validation["valid_count"], 1)
-        self.assertEqual(validation["missing_count"], 2)
+        self.assertEqual(validation["missing_count"], 1)
         self.assertEqual(validation["invalid_count"], 2)
         invalid_by_key = {item["expected"]["key"]: item for item in validation["invalid"]}
         self.assertIn("nozzle_temp", invalid_by_key)
         self.assertIn("ams_filament_type", invalid_by_key)
-        self.assertEqual({item["key"] for item in validation["missing"]}, {"printing_speed", "ams_filament_id"})
+        self.assertEqual({item["key"] for item in validation["missing"]}, {"ams_filament_id"})
 
     def test_merge_extra_fields_preserves_existing_values(self) -> None:
         merged = SpoolmanClient._merge_extra_fields(

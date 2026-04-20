@@ -25,12 +25,6 @@ class SpoolmanClient:
             "unit": "°C",
         },
         {
-            "key": "printing_speed",
-            "name": "Printing Speed",
-            "field_type": "integer_range",
-            "unit": "mm/s",
-        },
-        {
             "key": "ams_filament_type",
             "name": "ams_filament_type",
             "field_type": "text",

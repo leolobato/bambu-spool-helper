@@ -449,54 +449,6 @@ def _build_profile_field_sync(
     }
 
 
-def _build_create_profile_field_mappings(
-    *,
-    filament_type: str,
-    nozzle_temp: tuple[int | None, int | None],
-    bed_temp: int | None,
-    printing_speed: tuple[int | None, int | None],
-) -> list[dict[str, str]]:
-    normalized_nozzle = _normalize_optional_range(nozzle_temp)
-    normalized_speed = _normalize_optional_range(printing_speed)
-    filament_type_label = filament_type or "-"
-    bed_temp_label = "-" if bed_temp is None else f"{bed_temp} °C"
-
-    return [
-        {
-            "label": "Filament Type",
-            "source_field": "ams_filament_type",
-            "source_value": filament_type_label,
-            "target_fields": "filament_type",
-            "target_description": "Material family used by Orca to classify the filament profile.",
-            "meaning": "This decides which filament class the new Orca profile belongs to.",
-        },
-        {
-            "label": "Nozzle Temperature Range",
-            "source_field": "nozzle_temp",
-            "source_value": _format_range_label(*normalized_nozzle, unit="°C"),
-            "target_fields": "nozzle_temperature_range_low + nozzle_temperature_range_high",
-            "target_description": "Supported nozzle temperature window for the profile.",
-            "meaning": "Orca uses these as the lower and upper extrusion temperature limits.",
-        },
-        {
-            "label": "Bed Temperature",
-            "source_field": "bed_temp",
-            "source_value": bed_temp_label,
-            "target_fields": "hot_plate_temp",
-            "target_description": "Target build-plate temperature.",
-            "meaning": "This is the bed temperature Orca will store on the filament profile.",
-        },
-        {
-            "label": "Printing Speed Range",
-            "source_field": "printing_speed",
-            "source_value": _format_range_label(*normalized_speed, unit="mm/s"),
-            "target_fields": "slow_down_min_speed",
-            "target_description": "Lower bound of the label's linear speed range.",
-            "meaning": "Only the lower bound is written to Orca as the slowdown threshold. The upper bound stays in Spoolman for reference — it can't be converted to Orca's volumetric flow without knowing layer height and line width.",
-        },
-    ]
-
-
 def _filter_filaments(filaments: list[SpoolmanFilament], filter_mode: str, search: str) -> list[SpoolmanFilament]:
     filtered = filaments
     if filter_mode == "linked":
@@ -541,6 +493,12 @@ def _safe_int(value: Any) -> int | None:
     if parsed < 0:
         return None
     return parsed
+
+
+def _midpoint_or_single(low: int | None, high: int | None) -> int | None:
+    if low is not None and high is not None:
+        return (low + high) // 2
+    return low if low is not None else high
 
 
 def _decode_extra_range(extra: dict[str, str], key: str) -> tuple[int | None, int | None]:
@@ -603,7 +561,6 @@ def _profile_base_values(profile: FilamentProfileResponse | None) -> dict[str, i
             "nozzle_temperature_initial_layer": None,
             "hot_plate_temp": None,
             "hot_plate_temp_initial_layer": None,
-            "print_speed_min": None,
         }
     return {
         "nozzle_temp_min": profile.nozzle_temp_min or None,
@@ -612,7 +569,6 @@ def _profile_base_values(profile: FilamentProfileResponse | None) -> dict[str, i
         "nozzle_temperature_initial_layer": profile.extruder_temp_initial_layer,
         "hot_plate_temp": profile.bed_temp_min or None,
         "hot_plate_temp_initial_layer": profile.bed_temp_initial_layer,
-        "print_speed_min": profile.print_speed_min,
     }
 
 
@@ -640,8 +596,6 @@ def _render_create_profile_modal(
     nozzle_temperature_initial_layer: int | None,
     hot_plate_temp: int | None,
     hot_plate_temp_initial_layer: int | None,
-    print_speed_min: int | None,
-    print_speed_max: int | None,
     error_message: str = "",
     success_message: str = "",
     import_result: dict[str, Any] | None = None,
@@ -668,16 +622,8 @@ def _render_create_profile_modal(
             "nozzle_temperature_initial_layer": nozzle_temperature_initial_layer,
             "hot_plate_temp": hot_plate_temp,
             "hot_plate_temp_initial_layer": hot_plate_temp_initial_layer,
-            "print_speed_min": print_speed_min,
-            "print_speed_max": print_speed_max,
             "base_values": base_values,
             "base_values_map_json": json.dumps(base_values_map),
-            "field_mappings": _build_create_profile_field_mappings(
-                filament_type=filament_type,
-                nozzle_temp=(nozzle_temp_min, nozzle_temp_max),
-                bed_temp=hot_plate_temp,
-                printing_speed=(print_speed_min, print_speed_max),
-            ),
             "error_message": error_message,
             "success_message": success_message,
             "import_result": import_result or {},
@@ -1302,14 +1248,12 @@ async def create_profile_modal(
     extra = filament.extra or {}
     nozzle_min, nozzle_max = _normalize_optional_range(_decode_extra_range(extra, "nozzle_temp"))
     bed_min, bed_max = _decode_extra_range(extra, "bed_temp")
-    print_speed_min, print_speed_max = _normalize_optional_range(_decode_extra_range(extra, "printing_speed"))
-    hot_plate_temp = bed_min if bed_min is not None else bed_max
+    nozzle_fallback = _midpoint_or_single(nozzle_min, nozzle_max)
+    bed_fallback = _midpoint_or_single(bed_min, bed_max)
+    nozzle_temperature = filament.extruder_temp or nozzle_fallback
+    nozzle_temperature_initial_layer = nozzle_temperature
+    hot_plate_temp = filament.bed_temp or bed_fallback
     hot_plate_temp_initial_layer = hot_plate_temp
-    nozzle_midpoint = (
-        (nozzle_min + nozzle_max) // 2
-        if nozzle_min is not None and nozzle_max is not None
-        else None
-    )
 
     return _render_create_profile_modal(
         request,
@@ -1322,12 +1266,10 @@ async def create_profile_modal(
         filament_type=inferred_filament_type,
         nozzle_temp_min=nozzle_min,
         nozzle_temp_max=nozzle_max,
-        nozzle_temperature=nozzle_midpoint,
-        nozzle_temperature_initial_layer=nozzle_midpoint,
+        nozzle_temperature=nozzle_temperature,
+        nozzle_temperature_initial_layer=nozzle_temperature_initial_layer,
         hot_plate_temp=hot_plate_temp,
         hot_plate_temp_initial_layer=hot_plate_temp_initial_layer,
-        print_speed_min=print_speed_min,
-        print_speed_max=print_speed_max,
     )
 
 
@@ -1345,8 +1287,6 @@ async def create_profile_submit(
     nozzle_temperature_initial_layer: str = Form(default=""),
     hot_plate_temp: str = Form(default=""),
     hot_plate_temp_initial_layer: str = Form(default=""),
-    print_speed_min: str = Form(default=""),
-    print_speed_max: str = Form(default=""),
 ) -> HTMLResponse:
     filaments, error = await _load_filaments(request)
     if error:
@@ -1370,8 +1310,6 @@ async def create_profile_submit(
     nozzle_temp_initial = _safe_int(nozzle_temperature_initial_layer)
     hot_plate = _safe_int(hot_plate_temp)
     hot_plate_initial = _safe_int(hot_plate_temp_initial_layer)
-    speed_min = _safe_int(print_speed_min)
-    speed_max = _safe_int(print_speed_max)
 
     error_message = ""
     if not clean_name:
@@ -1384,8 +1322,6 @@ async def create_profile_submit(
         error_message = "Choose a valid filament type."
     elif (nozzle_min is None) != (nozzle_max is None):
         error_message = "Provide both nozzle min and max temperatures, or leave both empty."
-    elif (speed_min is None) != (speed_max is None):
-        error_message = "Provide both print speed min and max, or leave both empty."
 
     if error_message:
         return _render_create_profile_modal(
@@ -1403,8 +1339,6 @@ async def create_profile_submit(
             nozzle_temperature_initial_layer=nozzle_temp_initial,
             hot_plate_temp=hot_plate,
             hot_plate_temp_initial_layer=hot_plate_initial,
-            print_speed_min=speed_min,
-            print_speed_max=speed_max,
             error_message=error_message,
         )
 
@@ -1431,10 +1365,6 @@ async def create_profile_submit(
     if hot_plate_initial is not None:
         payload["hot_plate_temp_initial_layer"] = [hot_plate_initial]
 
-    if speed_min is not None and speed_max is not None:
-        low, _ = sorted((speed_min, speed_max))
-        payload["slow_down_min_speed"] = [low]
-
     try:
         result = await request.app.state.orcaslicer.import_profile(payload, machine_id)
     except httpx.HTTPStatusError as exc:
@@ -1454,8 +1384,6 @@ async def create_profile_submit(
             nozzle_temperature_initial_layer=nozzle_temp_initial,
             hot_plate_temp=hot_plate,
             hot_plate_temp_initial_layer=hot_plate_initial,
-            print_speed_min=speed_min,
-            print_speed_max=speed_max,
             error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
         )
     except httpx.HTTPError as exc:
@@ -1474,8 +1402,6 @@ async def create_profile_submit(
             nozzle_temperature_initial_layer=nozzle_temp_initial,
             hot_plate_temp=hot_plate,
             hot_plate_temp_initial_layer=hot_plate_initial,
-            print_speed_min=speed_min,
-            print_speed_max=speed_max,
             error_message=f"Import request failed: {exc}",
         )
 
@@ -1513,9 +1439,10 @@ async def create_profile_submit(
         filament_type=clean_type,
         nozzle_temp_min=nozzle_min,
         nozzle_temp_max=nozzle_max,
-        bed_temp=bed,
-        print_speed_min=speed_min,
-        print_speed_max=speed_max,
+        nozzle_temperature=nozzle_temp,
+        nozzle_temperature_initial_layer=nozzle_temp_initial,
+        hot_plate_temp=hot_plate,
+        hot_plate_temp_initial_layer=hot_plate_initial,
         success_message=success_message,
         import_result=result,
         headers=success_headers,
