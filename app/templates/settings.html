@@ -81,7 +81,7 @@
 
     <section class="rounded-xl border border-slate-800 bg-panel p-5">
       <h2 class="text-lg font-semibold tracking-tight">Spoolman</h2>
-      <p class="mt-1 text-sm text-slate-400">Validate the required Spoolman filament custom fields and create any missing ones.</p>
+      <p class="mt-1 text-sm text-slate-400">Validate the required Spoolman filament custom fields.</p>
 
       <div class="mt-4 flex flex-wrap gap-2">
         <button
@@ -91,14 +91,6 @@
           hx-swap="innerHTML"
         >
           Validate Spoolman Fields
-        </button>
-        <button
-          class="rounded-md border border-cyan-700 px-3 py-1.5 text-sm text-cyan-200 hover:bg-cyan-900/30"
-          hx-post="/web/settings/spoolman/ensure"
-          hx-target="#settings-spoolman-result"
-          hx-swap="innerHTML"
-        >
-          Create Missing Fields
         </button>
       </div>
 
