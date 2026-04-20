@@ -8,6 +8,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.responses import RedirectResponse
 
+from app import __version__
 from app.config import get_settings
 from app.models import ActivationRecord
 from app.routers import api, web
@@ -59,7 +60,7 @@ async def lifespan(app: FastAPI):
         await spoolman.close()
 
 
-app = FastAPI(title="bambu-spool-helper", lifespan=lifespan)
+app = FastAPI(title="bambu-spool-helper", version=__version__, lifespan=lifespan)
 
 
 @app.get("/", include_in_schema=False)
