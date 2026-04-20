@@ -18,9 +18,7 @@ class LinkFilamentTypeFallbackTests(unittest.TestCase):
             drying_temp_min=0,
             drying_temp_max=0,
             drying_time=0,
-            print_speed_min=0,
-            print_speed_max=0,
-        )
+            )
         filament = SpoolmanFilament(
             id=13,
             name="SUNLU PLA+ 2.0 White",

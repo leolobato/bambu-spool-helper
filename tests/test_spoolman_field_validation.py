@@ -72,7 +72,6 @@ class SpoolmanFieldValidationTests(unittest.TestCase):
                     extruder_temp=225,
                     nozzle_temp=(220, 230),
                     bed_temp=(65, 65),
-                    printing_speed=(18, 25),
                     basic_bed_temp=65,
                 )
             )
@@ -85,7 +84,6 @@ class SpoolmanFieldValidationTests(unittest.TestCase):
             extra_fields={
                 "nozzle_temp": "[220, 230]",
                 "bed_temp": "[65, 65]",
-                "printing_speed": "[18, 25]",
             },
             basic_fields={
                 "settings_extruder_temp": 225,

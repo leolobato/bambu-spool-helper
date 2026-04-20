@@ -214,8 +214,6 @@ class OrcaSlicerClient:
             drying_temp_min=drying_temp_min,
             drying_temp_max=drying_temp_max,
             drying_time=OrcaSlicerClient._extract_first_int(resolved, "filament_dev_ams_drying_time"),
-            print_speed_min=OrcaSlicerClient._extract_first_int(resolved, "slow_down_min_speed"),
-            print_speed_max=OrcaSlicerClient._extract_first_int(resolved, "filament_max_volumetric_speed"),
             k=OrcaSlicerClient._extract_first_float(resolved, "k"),
             n=OrcaSlicerClient._extract_first_float(resolved, "n"),
             source="system",

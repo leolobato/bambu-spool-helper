@@ -66,8 +66,6 @@ class FilamentProfileResponse(BaseModel):
     drying_temp_min: int
     drying_temp_max: int
     drying_time: int
-    print_speed_min: int
-    print_speed_max: int
     k: float | None = None
     n: float | None = None
     source: Literal["system", "user"] = "system"

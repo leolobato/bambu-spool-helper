@@ -19,8 +19,6 @@ class SettingsProfileValidationTests(unittest.TestCase):
                 drying_temp_min=0,
                 drying_temp_max=0,
                 drying_time=0,
-                print_speed_min=0,
-                print_speed_max=0,
             ),
         ]
         filaments = [

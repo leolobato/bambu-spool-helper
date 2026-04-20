@@ -355,15 +355,12 @@ def _build_profile_field_sync(
 
     current_nozzle = _decode_extra_range(filament.extra or {}, "nozzle_temp")
     current_bed = _decode_extra_range(filament.extra or {}, "bed_temp")
-    current_speed = _decode_extra_range(filament.extra or {}, "printing_speed")
 
     current_nozzle = _normalize_optional_range(current_nozzle)
     current_bed = _normalize_optional_range(current_bed)
-    current_speed = _normalize_optional_range(current_speed)
 
     target_nozzle = _normalize_required_range((profile.nozzle_temp_min, profile.nozzle_temp_max))
     target_bed = _normalize_required_range((profile.bed_temp_min, profile.bed_temp_max))
-    target_speed = _normalize_required_range((profile.print_speed_min, profile.print_speed_max))
     target_extruder_temp = profile.extruder_temp
     target_extruder_temp_initial_layer = profile.extruder_temp_initial_layer
     current_extruder_temp = filament.extruder_temp
@@ -392,17 +389,6 @@ def _build_profile_field_sync(
             "changed": _range_changed(current_bed, target_bed),
             "source_fields": ["hot_plate_temp"],
             "source_label": "hot_plate_temp",
-        },
-        {
-            "label": "Printing Speed",
-            "key": "printing_speed",
-            "current": current_speed,
-            "target": target_speed,
-            "current_label": _format_range_label(*current_speed, unit="mm/s"),
-            "target_label": _format_range_label(*target_speed, unit="mm/s"),
-            "changed": _range_changed(current_speed, target_speed),
-            "source_fields": ["slow_down_min_speed", "filament_max_volumetric_speed"],
-            "source_label": "slow_down_min_speed + filament_max_volumetric_speed",
         },
     ]
     basic_fields = []
@@ -454,7 +440,6 @@ def _build_profile_field_sync(
         "is_fully_synced": not has_changes,
         "target_nozzle": target_nozzle,
         "target_bed": target_bed,
-        "target_speed": target_speed,
         "target_basic_bed_temp": target_basic_bed_temp,
     }
 
@@ -500,9 +485,9 @@ def _build_create_profile_field_mappings(
             "label": "Printing Speed Range",
             "source_field": "printing_speed",
             "source_value": _format_range_label(*normalized_speed, unit="mm/s"),
-            "target_fields": "slow_down_min_speed + filament_max_volumetric_speed",
-            "target_description": "Low/high speed values used to seed Orca's speed-related limits.",
-            "meaning": "This is an approximation: the low value maps to slowdown speed, the high value maps to max volumetric speed.",
+            "target_fields": "slow_down_min_speed",
+            "target_description": "Lower bound of the label's linear speed range.",
+            "meaning": "Only the lower bound is written to Orca as the slowdown threshold. The upper bound stays in Spoolman for reference — it can't be converted to Orca's volumetric flow without knowing layer height and line width.",
         },
     ]
 
@@ -1223,14 +1208,16 @@ async def create_profile_submit(
         low, high = sorted((nozzle_min, nozzle_max))
         payload["nozzle_temperature_range_low"] = [low]
         payload["nozzle_temperature_range_high"] = [high]
+        midpoint = (low + high) // 2
+        payload["nozzle_temperature"] = [midpoint]
+        payload["nozzle_temperature_initial_layer"] = [midpoint]
 
     if bed is not None:
         payload["hot_plate_temp"] = [bed]
 
     if speed_min is not None and speed_max is not None:
-        low, high = sorted((speed_min, speed_max))
+        low, _ = sorted((speed_min, speed_max))
         payload["slow_down_min_speed"] = [low]
-        payload["filament_max_volumetric_speed"] = [high]
 
     try:
         result = await request.app.state.orcaslicer.import_profile(payload, machine_id)
@@ -1437,7 +1424,6 @@ async def sync_profile_fields(
             extruder_temp=linked_profile.extruder_temp,
             nozzle_temp=(linked_profile.nozzle_temp_min, linked_profile.nozzle_temp_max),
             bed_temp=(linked_profile.bed_temp_min, linked_profile.bed_temp_max),
-            printing_speed=(linked_profile.print_speed_min, linked_profile.print_speed_max),
             basic_bed_temp=linked_profile.bed_temp_min,
         )
     except ValueError as exc:
@@ -1469,7 +1455,7 @@ async def sync_profile_fields(
         machine_id,
         profile_search=profile_search,
         success_message=(
-            f"Updated Spoolman {updated_basic_fields_label}, bed_temp, nozzle_temp, and printing_speed "
+            f"Updated Spoolman {updated_basic_fields_label}, bed_temp, and nozzle_temp "
             f"from the linked Orca profile.{created_suffix}"
         ),
     )

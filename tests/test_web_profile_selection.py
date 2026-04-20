@@ -43,8 +43,6 @@ class WebProfileSelectionTests(unittest.TestCase):
                 drying_temp_min=0,
                 drying_temp_max=0,
                 drying_time=0,
-                print_speed_min=0,
-                print_speed_max=0,
             ),
             FilamentProfileResponse(
                 name="Correct PLA Profile",
@@ -58,8 +56,6 @@ class WebProfileSelectionTests(unittest.TestCase):
                 drying_temp_min=0,
                 drying_temp_max=0,
                 drying_time=0,
-                print_speed_min=0,
-                print_speed_max=0,
             ),
         ]
 
@@ -99,9 +95,7 @@ class WebProfileSelectionTests(unittest.TestCase):
             drying_temp_min=0,
             drying_temp_max=0,
             drying_time=0,
-            print_speed_min=25,
-            print_speed_max=18,
-        )
+            )
 
         sync = _build_profile_field_sync(filament, profile)
 
@@ -113,8 +107,7 @@ class WebProfileSelectionTests(unittest.TestCase):
         self.assertEqual(custom_field_by_key["nozzle_temp"]["current"], (190, 220))
         self.assertEqual(custom_field_by_key["nozzle_temp"]["target"], (220, 230))
         self.assertEqual(custom_field_by_key["bed_temp"]["current_label"], "55 °C")
-        self.assertEqual(custom_field_by_key["printing_speed"]["target_label"], "18-25 mm/s")
-        self.assertEqual(custom_field_by_key["printing_speed"]["source_label"], "slow_down_min_speed + filament_max_volumetric_speed")
+        self.assertNotIn("printing_speed", custom_field_by_key)
         self.assertEqual(basic_field_by_key["extruder_temp"]["current_label"], "210 °C")
         self.assertEqual(basic_field_by_key["extruder_temp"]["target"], 225)
         self.assertEqual(basic_field_by_key["extruder_temp"]["target_label"], "225 °C (initial layer 230 °C)")
@@ -150,9 +143,7 @@ class WebProfileSelectionTests(unittest.TestCase):
             drying_temp_min=0,
             drying_temp_max=0,
             drying_time=0,
-            print_speed_min=18,
-            print_speed_max=25,
-        )
+            )
 
         sync = _build_profile_field_sync(filament, profile)
 
@@ -177,7 +168,8 @@ class WebProfileSelectionTests(unittest.TestCase):
         )
         self.assertEqual(mapping_by_label["Bed Temperature"]["target_fields"], "hot_plate_temp")
         self.assertEqual(mapping_by_label["Printing Speed Range"]["source_value"], "18-20 mm/s")
-        self.assertIn("approximation", mapping_by_label["Printing Speed Range"]["meaning"])
+        self.assertEqual(mapping_by_label["Printing Speed Range"]["target_fields"], "slow_down_min_speed")
+        self.assertIn("Only the lower bound", mapping_by_label["Printing Speed Range"]["meaning"])
 
     def test_spoolman_filament_reads_settings_basic_fields_from_api_aliases(self) -> None:
         filament = SpoolmanFilament.model_validate(
@@ -216,9 +208,7 @@ class WebProfileSelectionTests(unittest.TestCase):
             drying_temp_min=0,
             drying_temp_max=0,
             drying_time=0,
-            print_speed_min=18,
-            print_speed_max=25,
-        )
+            )
         request = SimpleNamespace(
             app=SimpleNamespace(
                 state=SimpleNamespace(

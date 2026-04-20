@@ -42,8 +42,6 @@ class BuildProfileResolvedDetailTests(unittest.TestCase):
         self.assertEqual(profile.bed_temp_max, 55)
         self.assertEqual(profile.extruder_temp, 220)
         self.assertEqual(profile.extruder_temp_initial_layer, 220)
-        self.assertEqual(profile.print_speed_min, 20)
-        self.assertEqual(profile.print_speed_max, 12)
         self.assertEqual(profile.drying_temp_min, 50)
         self.assertEqual(profile.drying_temp_max, 55)
         self.assertEqual(profile.drying_time, 8)
@@ -72,8 +70,6 @@ class BuildProfileResolvedDetailTests(unittest.TestCase):
         self.assertEqual(profile.nozzle_temp_min, 200)
         self.assertEqual(profile.nozzle_temp_max, 230)
         self.assertEqual(profile.bed_temp_min, 60)
-        self.assertEqual(profile.print_speed_min, 25)
-        self.assertEqual(profile.print_speed_max, 15)
 
 
 if __name__ == "__main__":

@@ -153,7 +153,6 @@ class SpoolmanClient:
         extruder_temp: int | None = None,
         nozzle_temp: tuple[int, int],
         bed_temp: tuple[int, int],
-        printing_speed: tuple[int, int],
         basic_bed_temp: int,
     ) -> dict[str, Any]:
         validation_result = await self.ensure_required_filament_fields()
@@ -176,7 +175,6 @@ class SpoolmanClient:
             extra_fields={
                 "nozzle_temp": self._json_encode_range(nozzle_temp),
                 "bed_temp": self._json_encode_range(bed_temp),
-                "printing_speed": self._json_encode_range(printing_speed),
             },
             basic_fields=basic_fields,
         )

@@ -25,8 +25,6 @@ class TrayProfileMatchingTests(unittest.TestCase):
                 drying_temp_min=0,
                 drying_temp_max=0,
                 drying_time=0,
-                print_speed_min=0,
-                print_speed_max=0,
             ),
             FilamentProfileResponse(
                 name="Correct PLA Profile",
@@ -40,8 +38,6 @@ class TrayProfileMatchingTests(unittest.TestCase):
                 drying_temp_min=0,
                 drying_temp_max=0,
                 drying_time=0,
-                print_speed_min=0,
-                print_speed_max=0,
             ),
         ]
         filament = SpoolmanFilament(
@@ -72,10 +68,7 @@ class TrayProfileMatchingTests(unittest.TestCase):
                 bed_temp_max=55,
                 drying_temp_min=0,
                 drying_temp_max=0,
-                drying_time=0,
-                print_speed_min=0,
-                print_speed_max=0,
-                k=0.02,
+                drying_time=0,                k=0.02,
                 n=1.05,
             ),
             FilamentProfileResponse(
@@ -89,10 +82,7 @@ class TrayProfileMatchingTests(unittest.TestCase):
                 bed_temp_max=65,
                 drying_temp_min=0,
                 drying_temp_max=0,
-                drying_time=0,
-                print_speed_min=0,
-                print_speed_max=0,
-                k=0.03,
+                drying_time=0,                k=0.03,
                 n=1.11,
             ),
         ]
@@ -127,9 +117,7 @@ class TrayProfileMatchingTests(unittest.TestCase):
             drying_temp_min=0,
             drying_temp_max=0,
             drying_time=0,
-            print_speed_min=0,
-            print_speed_max=0,
-        )
+            )
         filament = SpoolmanFilament(
             id=2,
             name="Custom material",
@@ -157,9 +145,7 @@ class TrayProfileMatchingTests(unittest.TestCase):
             drying_temp_min=0,
             drying_temp_max=0,
             drying_time=0,
-            print_speed_min=0,
-            print_speed_max=0,
-        )
+            )
         filament = SpoolmanFilament(
             id=3,
             name="White",
@@ -235,9 +221,7 @@ class TrayProfileMatchingTests(unittest.TestCase):
             drying_temp_min=0,
             drying_temp_max=0,
             drying_time=0,
-            print_speed_min=0,
-            print_speed_max=0,
-        )
+            )
 
         updated_tray = _apply_assignment_to_tray_view(tray, spool, profile, "PLA")
 
