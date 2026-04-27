@@ -217,33 +217,33 @@
         </section>
 
         <section class="space-y-3">
-          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Bed temperature <span class="text-slate-600">(°C)</span></h3>
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Textured plate temperature <span class="text-slate-600">(°C)</span></h3>
           <div class="grid gap-3 md:grid-cols-2">
             <div>
-              {{ field_label("hot-plate-temp", "Normal", "hot_plate_temp", "Target build-plate temperature. Prefilled from Spoolman settings_bed_temp, or the midpoint of the bed_temp range if not set.") }}
+              {{ field_label("textured-plate-temp", "Normal", "textured_plate_temp", "Target textured-plate temperature. Prefilled from Spoolman settings_bed_temp, or the midpoint of the bed_temp range if not set.") }}
               <input
-                id="hot-plate-temp"
-                name="hot_plate_temp"
+                id="textured-plate-temp"
+                name="textured_plate_temp"
                 type="number"
                 min="0"
-                value="{{ hot_plate_temp if hot_plate_temp is not none else '' }}"
-                aria-describedby="hot-plate-temp-desc"
+                value="{{ textured_plate_temp if textured_plate_temp is not none else '' }}"
+                aria-describedby="textured-plate-temp-desc"
                 class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
               />
-              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="hot_plate_temp">{% if base_values.hot_plate_temp is not none %}{{ base_values.hot_plate_temp }} °C{% else %}—{% endif %}</span></p>
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="textured_plate_temp">{% if base_values.textured_plate_temp is not none %}{{ base_values.textured_plate_temp }} °C{% else %}—{% endif %}</span></p>
             </div>
             <div>
-              {{ field_label("hot-plate-temp-initial-layer", "Initial layer", "hot_plate_temp_initial_layer", "Build-plate temperature for the first layer. Prefilled from Spoolman settings_bed_temp, or the midpoint of the bed_temp range if not set.") }}
+              {{ field_label("textured-plate-temp-initial-layer", "Initial layer", "textured_plate_temp_initial_layer", "Textured-plate temperature for the first layer. Prefilled from Spoolman settings_bed_temp, or the midpoint of the bed_temp range if not set.") }}
               <input
-                id="hot-plate-temp-initial-layer"
-                name="hot_plate_temp_initial_layer"
+                id="textured-plate-temp-initial-layer"
+                name="textured_plate_temp_initial_layer"
                 type="number"
                 min="0"
-                value="{{ hot_plate_temp_initial_layer if hot_plate_temp_initial_layer is not none else '' }}"
-                aria-describedby="hot-plate-temp-initial-layer-desc"
+                value="{{ textured_plate_temp_initial_layer if textured_plate_temp_initial_layer is not none else '' }}"
+                aria-describedby="textured-plate-temp-initial-layer-desc"
                 class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
               />
-              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="hot_plate_temp_initial_layer">{% if base_values.hot_plate_temp_initial_layer is not none %}{{ base_values.hot_plate_temp_initial_layer }} °C{% else %}—{% endif %}</span></p>
+              <p class="mt-1 text-xs text-slate-500">Base profile: <span class="text-slate-300" data-base-value="textured_plate_temp_initial_layer">{% if base_values.textured_plate_temp_initial_layer is not none %}{{ base_values.textured_plate_temp_initial_layer }} °C{% else %}—{% endif %}</span></p>
             </div>
           </div>
         </section>
@@ -282,8 +282,8 @@
             nozzle_temp_max: "°C",
             nozzle_temperature: "°C",
             nozzle_temperature_initial_layer: "°C",
-            hot_plate_temp: "°C",
-            hot_plate_temp_initial_layer: "°C",
+            textured_plate_temp: "°C",
+            textured_plate_temp_initial_layer: "°C",
           };
           select.addEventListener("change", function () {
             const values = baseMap[select.value] || {};

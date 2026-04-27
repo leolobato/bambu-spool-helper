@@ -46,6 +46,34 @@ class BuildProfileResolvedDetailTests(unittest.TestCase):
         self.assertEqual(profile.drying_temp_max, 55)
         self.assertEqual(profile.drying_time, 8)
 
+    def test_prefers_textured_plate_temp_over_hot_plate_temp(self) -> None:
+        summary = {
+            "setting_id": "Textured PETG",
+            "name": "Textured PETG",
+            "filament_id": "P9999",
+            "filament_type": "PETG",
+        }
+        detail = {
+            "setting_id": summary["setting_id"],
+            "name": summary["name"],
+            "resolved": {
+                "filament_id": "P9999",
+                "filament_type": ["PETG"],
+                "nozzle_temperature_range_low": ["230"],
+                "nozzle_temperature_range_high": ["250"],
+                "hot_plate_temp": ["80"],
+                "hot_plate_temp_initial_layer": ["80"],
+                "textured_plate_temp": ["70"],
+                "textured_plate_temp_initial_layer": ["72"],
+            },
+        }
+
+        profile = OrcaSlicerClient._build_profile(summary, detail)
+
+        self.assertEqual(profile.bed_temp_min, 70)
+        self.assertEqual(profile.bed_temp_max, 70)
+        self.assertEqual(profile.bed_temp_initial_layer, 72)
+
     def test_falls_back_to_top_level_when_resolved_missing(self) -> None:
         summary = {
             "setting_id": "Legacy profile",

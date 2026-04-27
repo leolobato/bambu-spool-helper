@@ -169,6 +169,10 @@ def _set_payload_filament_type(payload: dict[str, Any], filament_type: str) -> N
     payload["filament_type"] = [_normalize_valid_filament_type(filament_type)]
 
 
+def _filament_value(value: int) -> list[str]:
+    return [str(value)]
+
+
 def _values_match(left: str, right: str) -> bool:
     left_normalized = str(left or "").strip().casefold()
     right_normalized = str(right or "").strip().casefold()
@@ -403,8 +407,8 @@ def _build_profile_field_sync(
             "current_label": _format_range_label(*current_bed, unit="°C"),
             "target_label": _format_range_label(*target_bed, unit="°C"),
             "changed": not _target_fits_current_range(current_bed, target_bed),
-            "source_fields": ["hot_plate_temp"],
-            "source_label": "hot_plate_temp",
+            "source_fields": ["textured_plate_temp"],
+            "source_label": "textured_plate_temp",
         },
     ]
     basic_fields = []
@@ -442,8 +446,8 @@ def _build_profile_field_sync(
             "target": target_basic_bed_temp,
             "target_label": f"{target_basic_bed_temp} °C",
             "changed": current_basic_bed_temp != target_basic_bed_temp,
-            "source_fields": ["hot_plate_temp"],
-            "source_label": "hot_plate_temp",
+            "source_fields": ["textured_plate_temp"],
+            "source_label": "textured_plate_temp",
         }
     )
 
@@ -570,16 +574,16 @@ def _profile_base_values(profile: FilamentProfileResponse | None) -> dict[str, i
             "nozzle_temp_max": None,
             "nozzle_temperature": None,
             "nozzle_temperature_initial_layer": None,
-            "hot_plate_temp": None,
-            "hot_plate_temp_initial_layer": None,
+            "textured_plate_temp": None,
+            "textured_plate_temp_initial_layer": None,
         }
     return {
         "nozzle_temp_min": profile.nozzle_temp_min or None,
         "nozzle_temp_max": profile.nozzle_temp_max or None,
         "nozzle_temperature": profile.extruder_temp,
         "nozzle_temperature_initial_layer": profile.extruder_temp_initial_layer,
-        "hot_plate_temp": profile.bed_temp_min or None,
-        "hot_plate_temp_initial_layer": profile.bed_temp_initial_layer,
+        "textured_plate_temp": profile.bed_temp_min or None,
+        "textured_plate_temp_initial_layer": profile.bed_temp_initial_layer,
     }
 
 
@@ -605,8 +609,8 @@ def _render_create_profile_modal(
     nozzle_temp_max: int | None,
     nozzle_temperature: int | None,
     nozzle_temperature_initial_layer: int | None,
-    hot_plate_temp: int | None,
-    hot_plate_temp_initial_layer: int | None,
+    textured_plate_temp: int | None,
+    textured_plate_temp_initial_layer: int | None,
     error_message: str = "",
     success_message: str = "",
     import_result: dict[str, Any] | None = None,
@@ -631,8 +635,8 @@ def _render_create_profile_modal(
             "nozzle_temp_max": nozzle_temp_max,
             "nozzle_temperature": nozzle_temperature,
             "nozzle_temperature_initial_layer": nozzle_temperature_initial_layer,
-            "hot_plate_temp": hot_plate_temp,
-            "hot_plate_temp_initial_layer": hot_plate_temp_initial_layer,
+            "textured_plate_temp": textured_plate_temp,
+            "textured_plate_temp_initial_layer": textured_plate_temp_initial_layer,
             "base_values": base_values,
             "base_values_map_json": json.dumps(base_values_map),
             "error_message": error_message,
@@ -1263,8 +1267,8 @@ async def create_profile_modal(
     bed_fallback = _midpoint_or_single(bed_min, bed_max)
     nozzle_temperature = filament.extruder_temp or nozzle_fallback
     nozzle_temperature_initial_layer = nozzle_temperature
-    hot_plate_temp = filament.bed_temp or bed_fallback
-    hot_plate_temp_initial_layer = hot_plate_temp
+    textured_plate_temp = filament.bed_temp or bed_fallback
+    textured_plate_temp_initial_layer = textured_plate_temp
 
     return _render_create_profile_modal(
         request,
@@ -1279,8 +1283,8 @@ async def create_profile_modal(
         nozzle_temp_max=nozzle_max,
         nozzle_temperature=nozzle_temperature,
         nozzle_temperature_initial_layer=nozzle_temperature_initial_layer,
-        hot_plate_temp=hot_plate_temp,
-        hot_plate_temp_initial_layer=hot_plate_temp_initial_layer,
+        textured_plate_temp=textured_plate_temp,
+        textured_plate_temp_initial_layer=textured_plate_temp_initial_layer,
     )
 
 
@@ -1296,8 +1300,8 @@ async def create_profile_submit(
     nozzle_temp_max: str = Form(default=""),
     nozzle_temperature: str = Form(default=""),
     nozzle_temperature_initial_layer: str = Form(default=""),
-    hot_plate_temp: str = Form(default=""),
-    hot_plate_temp_initial_layer: str = Form(default=""),
+    textured_plate_temp: str = Form(default=""),
+    textured_plate_temp_initial_layer: str = Form(default=""),
 ) -> HTMLResponse:
     filaments, error = await _load_filaments(request)
     if error:
@@ -1319,8 +1323,8 @@ async def create_profile_submit(
     nozzle_max = _safe_int(nozzle_temp_max)
     nozzle_temp = _safe_int(nozzle_temperature)
     nozzle_temp_initial = _safe_int(nozzle_temperature_initial_layer)
-    hot_plate = _safe_int(hot_plate_temp)
-    hot_plate_initial = _safe_int(hot_plate_temp_initial_layer)
+    textured_plate = _safe_int(textured_plate_temp)
+    textured_plate_initial = _safe_int(textured_plate_temp_initial_layer)
 
     error_message = ""
     if not clean_name:
@@ -1348,8 +1352,8 @@ async def create_profile_submit(
             nozzle_temp_max=nozzle_max,
             nozzle_temperature=nozzle_temp,
             nozzle_temperature_initial_layer=nozzle_temp_initial,
-            hot_plate_temp=hot_plate,
-            hot_plate_temp_initial_layer=hot_plate_initial,
+            textured_plate_temp=textured_plate,
+            textured_plate_temp_initial_layer=textured_plate_initial,
             error_message=error_message,
         )
 
@@ -1361,20 +1365,20 @@ async def create_profile_submit(
 
     if nozzle_min is not None and nozzle_max is not None:
         low, high = sorted((nozzle_min, nozzle_max))
-        payload["nozzle_temperature_range_low"] = [low]
-        payload["nozzle_temperature_range_high"] = [high]
+        payload["nozzle_temperature_range_low"] = _filament_value(low)
+        payload["nozzle_temperature_range_high"] = _filament_value(high)
 
     if nozzle_temp is not None:
-        payload["nozzle_temperature"] = [nozzle_temp]
+        payload["nozzle_temperature"] = _filament_value(nozzle_temp)
 
     if nozzle_temp_initial is not None:
-        payload["nozzle_temperature_initial_layer"] = [nozzle_temp_initial]
+        payload["nozzle_temperature_initial_layer"] = _filament_value(nozzle_temp_initial)
 
-    if hot_plate is not None:
-        payload["hot_plate_temp"] = [hot_plate]
+    if textured_plate is not None:
+        payload["textured_plate_temp"] = _filament_value(textured_plate)
 
-    if hot_plate_initial is not None:
-        payload["hot_plate_temp_initial_layer"] = [hot_plate_initial]
+    if textured_plate_initial is not None:
+        payload["textured_plate_temp_initial_layer"] = _filament_value(textured_plate_initial)
 
     try:
         result = await request.app.state.orcaslicer.import_profile(payload, machine_id)
@@ -1393,8 +1397,8 @@ async def create_profile_submit(
             nozzle_temp_max=nozzle_max,
             nozzle_temperature=nozzle_temp,
             nozzle_temperature_initial_layer=nozzle_temp_initial,
-            hot_plate_temp=hot_plate,
-            hot_plate_temp_initial_layer=hot_plate_initial,
+            textured_plate_temp=textured_plate,
+            textured_plate_temp_initial_layer=textured_plate_initial,
             error_message=f"Import failed ({exc.response.status_code}): {error_detail}",
         )
     except httpx.HTTPError as exc:
@@ -1411,8 +1415,8 @@ async def create_profile_submit(
             nozzle_temp_max=nozzle_max,
             nozzle_temperature=nozzle_temp,
             nozzle_temperature_initial_layer=nozzle_temp_initial,
-            hot_plate_temp=hot_plate,
-            hot_plate_temp_initial_layer=hot_plate_initial,
+            textured_plate_temp=textured_plate,
+            textured_plate_temp_initial_layer=textured_plate_initial,
             error_message=f"Import request failed: {exc}",
         )
 
@@ -1453,8 +1457,8 @@ async def create_profile_submit(
         nozzle_temp_max=nozzle_max,
         nozzle_temperature=nozzle_temp,
         nozzle_temperature_initial_layer=nozzle_temp_initial,
-        hot_plate_temp=hot_plate,
-        hot_plate_temp_initial_layer=hot_plate_initial,
+        textured_plate_temp=textured_plate,
+        textured_plate_temp_initial_layer=textured_plate_initial,
         success_message=success_message,
         import_result=result,
         headers=success_headers,

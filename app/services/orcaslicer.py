@@ -191,9 +191,13 @@ class OrcaSlicerClient:
         nozzle_temp_min = OrcaSlicerClient._extract_first_int(resolved, "nozzle_temperature_range_low")
         nozzle_temp_max = OrcaSlicerClient._extract_first_int(resolved, "nozzle_temperature_range_high")
 
-        bed_temp = OrcaSlicerClient._extract_first_int(resolved, "hot_plate_temp")
-        bed_temp_initial_layer = OrcaSlicerClient._extract_first_int(
-            resolved, "hot_plate_temp_initial_layer"
+        bed_temp = (
+            OrcaSlicerClient._extract_first_int(resolved, "textured_plate_temp")
+            or OrcaSlicerClient._extract_first_int(resolved, "hot_plate_temp")
+        )
+        bed_temp_initial_layer = (
+            OrcaSlicerClient._extract_first_int(resolved, "textured_plate_temp_initial_layer")
+            or OrcaSlicerClient._extract_first_int(resolved, "hot_plate_temp_initial_layer")
         )
 
         drying_values = OrcaSlicerClient._extract_int_list(

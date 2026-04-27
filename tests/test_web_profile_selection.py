@@ -113,7 +113,7 @@ class WebProfileSelectionTests(unittest.TestCase):
         self.assertEqual(basic_field_by_key["extruder_temp"]["source_label"], "nozzle_temperature + nozzle_temperature_initial_layer")
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["current_label"], "50 °C")
         self.assertEqual(basic_field_by_key["bed_temp_basic"]["target_label"], "65 °C")
-        self.assertEqual(basic_field_by_key["bed_temp_basic"]["source_label"], "hot_plate_temp")
+        self.assertEqual(basic_field_by_key["bed_temp_basic"]["source_label"], "textured_plate_temp")
         self.assertFalse(sync["is_fully_synced"])
 
     def test_build_profile_field_sync_marks_matching_fields_as_fully_synced(self) -> None:
