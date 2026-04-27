@@ -1,106 +1,126 @@
-# bambu-spool-helper
+# Bambu Spool Helper
 
-A FastAPI service that links [Spoolman](https://github.com/Donkie/Spoolman) filament inventory to OrcaSlicer/Bambu Lab filament profiles. It provides:
+A self-hosted bridge between [Spoolman](https://github.com/Donkie/Spoolman)
+filament inventory and Bambu Lab printers. It lets you keep your real spools in
+Spoolman, link each one to an OrcaSlicer / Bambu filament profile, and push
+those settings straight into the printer's AMS over MQTT — no slicer round-trip
+required.
 
-- A **REST API** compatible with the original macOS spool-helper app
-- A **web UI** (HTMX) for browsing Spoolman filaments and linking them to Bambu profiles
-- **MQTT activation** to push filament settings directly to a Bambu printer's AMS
+It pairs with [orcaslicer-cli](https://github.com/leolobato/orcaslicer-cli) for
+the profile catalog (so you can use your own custom filament profiles, not just
+the built-in Bambu ones) and works with any Bambu Lab printer in
+**developer / LAN mode**.
+
+This is a Python/Docker port of the macOS [spool-helper](https://github.com/leolobato/spool-helper)
+app. Same idea, but headless, multi-user, and runnable on a NAS or
+Raspberry Pi alongside Spoolman.
+
+## Features
+
+- **Web UI** (HTMX + Tailwind) for browsing Spoolman filaments and linking them to Bambu profiles
+- **REST API** compatible with the original macOS spool-helper app
+- **Direct AMS activation** over MQTT — sets filament type, color, and nozzle/bed temperatures on a chosen tray
+- **AMS + external spool support** — trays 0–3 for AMS slots, tray 4 for the external spool holder
+- **Custom profile support** via orcaslicer-cli — works with user profiles, not just system ones
+- **Create profiles from filament JSON** — paste an exported Bambu/OrcaSlicer filament JSON and the UI builds an AMS-assignable profile, prompting for missing fields (e.g. textured-plate temperature)
+- **Smart matching** — exact `(setting_id, filament_id)` first, falling back to filament ID, then scoring by material, type, and source priority (user > system)
+- **Graceful degradation** — runs fine without printer credentials; only the activation step is skipped
+- **Stateless** — all linkage data lives in Spoolman as `bambu_*` extra fields, so nothing is locked to this app
 
 ## How It Works
 
-1. Fetches filament profiles from an [orcaslicer-cli](https://github.com/leolobato/orcaslicer-cli) HTTP API
+1. On startup, fetches the filament profile catalog from `orcaslicer-cli` and caches it in memory
 2. Reads your filament inventory from Spoolman
-3. Lets you link each Spoolman filament to a Bambu profile (stored as Spoolman extra fields)
-4. On activation, sends MQTT commands to the printer to set the AMS tray filament type, color, and temperature
+3. You link each Spoolman filament to a Bambu profile in the web UI; the link is stored back in Spoolman as extra fields (double-JSON-encoded `bambu_filament_id`, `bambu_setting_id`, etc.)
+4. When you click **Activate** on a tray, the app publishes an `ams_filament_setting` MQTT command to `device/{serial}/request` over TLS (port 8883), and the printer's AMS picks up the new settings instantly
 
-## Setup
+No printer firmware modifications, no Bambu cloud, no slicer GUI — everything stays on your LAN.
 
-### Docker Compose (recommended)
+## Quick Start
 
-Create a `.env` file:
+You'll need:
 
-```env
-PRINTER_IP=192.168.1.100
-PRINTER_ACCESS_CODE=your_access_code
-PRINTER_SERIAL=your_serial_number
-```
+- A Bambu Lab printer with **Developer Mode** enabled (the access code, IP, and serial are in the printer's network settings)
+- A running [Spoolman](https://github.com/Donkie/Spoolman) instance
+- A running [orcaslicer-cli](https://github.com/leolobato/orcaslicer-cli) instance
 
-Then:
+### Run with Docker (recommended)
 
-```bash
-docker network create spoolnet  # shared with orcaslicer-cli and Spoolman
-docker compose up --build
-```
-
-The service will be available at `http://localhost:9817`.
-
-### Local Run
-
-For local development without Docker:
-
-1. Point `.env` at your running services.
-
-```env
-ORCASLICER_URL=http://localhost:8070
-SPOOLMAN_URL=http://localhost:7912
-DEFAULT_MACHINE_PROFILE_ID=GM020
-PORT=9817
-```
-
-2. If you do not need live printer access while developing, leave these empty so MQTT is skipped:
-
-```env
-PRINTER_IP=
-PRINTER_ACCESS_CODE=
-PRINTER_SERIAL=
-```
-
-3. Start the app:
+Released images are published to GHCR on every `v*` tag:
 
 ```bash
+docker run -d --name bambu-spool-helper \
+  -p 9817:9817 \
+  -e ORCASLICER_URL=http://10.0.1.9:8070 \
+  -e SPOOLMAN_URL=http://10.0.1.9:7912 \
+  -e PRINTER_IP=192.168.1.100 \
+  -e PRINTER_ACCESS_CODE=your_access_code \
+  -e PRINTER_SERIAL=your_serial_number \
+  ghcr.io/leolobato/bambu-spool-helper:latest
+```
+
+Or with `docker compose` (uses a shared external network so the helper can talk
+to other containers by hostname):
+
+```bash
+# Create the .env file with your printer credentials, then:
+docker network create spoolnet   # shared with orcaslicer-cli and Spoolman
+docker compose up -d
+```
+
+`docker-compose.yml` defaults `ORCASLICER_URL` to `http://orcaslicer:8000` and
+`SPOOLMAN_URL` to `http://spoolman:7912` — both resolved over the `spoolnet`
+network. Override them in `.env` if your services live elsewhere.
+
+Open [http://localhost:9817/web/](http://localhost:9817/web/) once it's up.
+
+### Run from source
+
+Requires Python 3.12+.
+
+```bash
+git clone https://github.com/leolobato/bambu-spool-helper.git
+cd bambu-spool-helper
 bash scripts/run-local.sh
 ```
 
-The script will:
-- create `.venv` if needed
-- install `requirements.txt` if dependencies are missing
-- source `.env`
-- run `uvicorn` with reload enabled
+`scripts/run-local.sh` creates `.venv` if needed, installs `requirements.txt`,
+sources `.env`, and starts `uvicorn` with reload enabled.
 
-Open `http://localhost:9817/web/`.
+For local development without a printer, leave `PRINTER_IP`,
+`PRINTER_ACCESS_CODE`, and `PRINTER_SERIAL` empty — the web UI still works,
+only MQTT activation is skipped.
 
-Notes:
-- The app also accepts the old env name `DEFAULT_MACHINE_SETTING_ID`, but `DEFAULT_MACHINE_PROFILE_ID` is the canonical one.
-- If MQTT initialization fails locally, the web app still starts; only printer activation is affected.
+## Configuration
 
-### Environment Variables
+All configuration is via environment variables (loaded from `.env` if present).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ORCASLICER_URL` | `http://orcaslicer:8000` | orcaslicer-cli base URL |
-| `SPOOLMAN_URL` | `http://spoolman:7912` | Spoolman base URL |
-| `PRINTER_IP` | _(empty)_ | Bambu printer IP address |
-| `PRINTER_ACCESS_CODE` | _(empty)_ | Printer access code (from printer settings) |
+| `ORCASLICER_URL` | `http://orcaslicer:8000` | orcaslicer-cli base URL — required for the profile catalog |
+| `SPOOLMAN_URL` | `http://spoolman:7912` | Spoolman base URL — required for filament inventory |
+| `PRINTER_IP` | _(empty)_ | Bambu printer IP address — leave empty to disable MQTT |
+| `PRINTER_ACCESS_CODE` | _(empty)_ | Printer access code (from printer's network settings) |
 | `PRINTER_SERIAL` | _(empty)_ | Printer serial number |
-| `DEFAULT_MACHINE_PROFILE_ID` | `GM020` | Machine profile for filtering (A1 mini) |
-| `PORT` | `9817` | Server port |
-| `DETAIL_FETCH_CONCURRENCY` | `10` | Max concurrent profile detail requests |
+| `DEFAULT_MACHINE_PROFILE_ID` | `GM020` | Machine profile used to filter AMS-assignable filaments (`GM020` = A1 mini). Also accepts the legacy name `DEFAULT_MACHINE_SETTING_ID`. |
+| `PORT` | `9817` | HTTP server port |
+| `DETAIL_FETCH_CONCURRENCY` | `10` | Max concurrent profile-detail requests against orcaslicer-cli |
 
-Printer variables are optional — without them, the service runs but skips MQTT commands.
+Printer variables are optional. Without them the service runs as a read-only
+inventory linker — useful for prepping spool data ahead of time, or for running
+on a host that can't reach the printer.
 
 ## API
 
-### `GET /status`
-
-Returns service status and loaded profile count.
-
-### `GET /profiles?search=term`
-
-Lists filament profiles, optionally filtered by name or type.
+| Method | Path | Description |
+|--------|------|-------------|
+| `GET` | `/status` | Health check + loaded profile count |
+| `GET` | `/profiles?search=term` | List filament profiles, optionally filtered case-insensitively |
+| `POST` | `/activate` | Send a filament profile to a printer tray over MQTT |
+| `POST` | `/reload` | Trigger orcaslicer-cli's `POST /profiles/reload`, then refresh the cached AMS-assignable profile list |
+| `GET` | `/web/` | HTMX web interface |
 
 ### `POST /activate`
-
-Activates a filament profile on a printer tray.
 
 ```json
 {
@@ -110,18 +130,44 @@ Activates a filament profile on a printer tray.
 }
 ```
 
-Tray values: 0-3 for AMS slots, 4 for external spool.
+Tray values: **0–3** for AMS slots, **4** for the external spool holder.
 
-### `POST /reload`
+Interactive API docs are available at `/docs` (Swagger UI) and `/redoc`.
 
-Calls `orcaslicer-cli`'s `POST /profiles/reload`, then refreshes the selected machine's cached AMS-assignable profile list in `bambu-spool-helper`.
+## Web UI
 
-### `GET /web/`
+The web UI lives at `/web/` and lets you:
 
-Web interface for browsing and linking filaments.
+- Browse all filaments from Spoolman
+- Search and pick a Bambu/OrcaSlicer profile for each one
+- See exactly which fields will be written to Spoolman as `bambu_*` extras
+- Activate a linked filament directly into any AMS tray (or the external spool)
+- Create a new profile by pasting a Bambu/OrcaSlicer filament JSON — if the
+  imported profile is missing AMS-required fields (e.g. textured-plate temp),
+  the UI prompts for them before saving so the result is always
+  AMS-assignable
 
-Imported filament JSON is resolved through `orcaslicer-cli` first. If the resolved profile does not contain a valid AMS `filament_type`, the web UI prompts for one before saving so the profile remains AMS-assignable.
+Imported filament JSON is resolved through orcaslicer-cli first; only when the
+resolved profile lacks a valid `filament_type` does the form fall back to
+asking for one.
+
+## Releases
+
+Tagged commits matching `v*` (e.g. `v1.1.2`) trigger
+`.github/workflows/release.yml`, which:
+
+1. Builds and pushes a Docker image to `ghcr.io/leolobato/bambu-spool-helper`
+   tagged with the version and `latest`
+2. Creates a GitHub Release with auto-generated notes from the commit history
+
+To cut a release:
+
+```bash
+git tag v1.1.2
+git push origin v1.1.2
+```
 
 ## License
 
-MIT
+Bambu Spool Helper is available under the MIT License. See [LICENSE](LICENSE)
+for details.
