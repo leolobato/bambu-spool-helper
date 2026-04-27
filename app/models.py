@@ -170,6 +170,7 @@ class SpoolmanFilament(BaseModel):
     extruder_temp: int | None = Field(default=None, alias="settings_extruder_temp")
     bed_temp: int | None = Field(default=None, alias="settings_bed_temp")
     color_hex: str | None = Field(default=None, alias="color_hex")
+    comment: str | None = None
     vendor: SpoolmanVendor | None = None
     extra: dict[str, str] = Field(default_factory=dict)
 

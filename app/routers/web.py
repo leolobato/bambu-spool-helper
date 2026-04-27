@@ -619,6 +619,8 @@ def _render_create_profile_modal(
     selected_profile = _find_profile_by_setting_id(profiles, selected_base_setting_id)
     base_values = _profile_base_values(selected_profile)
     base_values_map = _all_base_values_map(profiles)
+    spoolman_bed_min, spoolman_bed_max = _decode_extra_range(filament.extra or {}, "bed_temp")
+    spoolman_notes = (filament.comment or "").strip()
     return templates.TemplateResponse(
         request,
         "partials/create_profile_from_filament.html",
@@ -639,6 +641,9 @@ def _render_create_profile_modal(
             "textured_plate_temp_initial_layer": textured_plate_temp_initial_layer,
             "base_values": base_values,
             "base_values_map_json": json.dumps(base_values_map),
+            "spoolman_bed_temp_min": spoolman_bed_min,
+            "spoolman_bed_temp_max": spoolman_bed_max,
+            "spoolman_notes": spoolman_notes,
             "error_message": error_message,
             "success_message": success_message,
             "import_result": import_result or {},

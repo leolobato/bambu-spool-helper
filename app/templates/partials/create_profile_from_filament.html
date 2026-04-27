@@ -248,6 +248,28 @@
           </div>
         </section>
 
+        <section class="space-y-2 border-t border-slate-800 pt-4">
+          <h3 class="text-xs font-semibold uppercase tracking-wider text-slate-500">Spoolman reference</h3>
+          <dl class="grid gap-2 text-sm md:grid-cols-[10rem_1fr]">
+            <dt class="text-slate-400">Bed temperature range</dt>
+            <dd class="text-slate-200">
+              {% if spoolman_bed_temp_min is not none and spoolman_bed_temp_max is not none %}
+                {{ spoolman_bed_temp_min }}–{{ spoolman_bed_temp_max }} °C
+              {% elif spoolman_bed_temp_min is not none %}
+                {{ spoolman_bed_temp_min }} °C
+              {% elif spoolman_bed_temp_max is not none %}
+                {{ spoolman_bed_temp_max }} °C
+              {% else %}
+                <span class="text-slate-500">—</span>
+              {% endif %}
+            </dd>
+            <dt class="text-slate-400">Notes</dt>
+            <dd class="whitespace-pre-wrap text-slate-200">
+              {% if spoolman_notes %}{{ spoolman_notes }}{% else %}<span class="text-slate-500">—</span>{% endif %}
+            </dd>
+          </dl>
+        </section>
+
         <div class="flex justify-end gap-2 border-t border-slate-800 pt-4">
           <button
             type="button"
