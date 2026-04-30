@@ -44,8 +44,37 @@ class OrcaSlicerClient:
             return data
         return {**data, "version": cls.DEFAULT_PROFILE_VERSION}
 
+    @staticmethod
+    def _coerce_array_values_to_strings(data: dict[str, Any]) -> dict[str, Any]:
+        """Cast numeric (int/float/bool) array elements to strings.
+
+        OrcaSlicer's profile schema represents option values as strings even
+        for numeric settings (e.g. `"nozzle_temperature": ["210"]`). The
+        desktop GUI's array parser (`Config.cpp::parse_str_arr`) returns
+        false on any non-string array element and breaks out of the import
+        loop, silently dropping the rest of the profile. Coerce here so a
+        caller that builds payloads with raw numbers still produces a file
+        the desktop GUI will accept on re-import.
+        """
+        out = dict(data)
+        for key, value in data.items():
+            if not isinstance(value, list):
+                continue
+            if all(isinstance(item, str) for item in value):
+                continue
+            coerced = [
+                str(item) if isinstance(item, (int, float, bool)) else item
+                for item in value
+            ]
+            out[key] = coerced
+        return out
+
+    @classmethod
+    def _prepare_payload(cls, data: dict[str, Any]) -> dict[str, Any]:
+        return cls._with_version(cls._coerce_array_values_to_strings(data))
+
     async def import_profile(self, data: dict[str, Any], machine_id: str | None = None) -> dict[str, Any]:
-        response = await self._client.post("/profiles/filaments", json=self._with_version(data))
+        response = await self._client.post("/profiles/filaments", json=self._prepare_payload(data))
         response.raise_for_status()
         payload = self._normalize_profile_payload(response.json())
         self._profiles_by_machine.clear()
@@ -67,7 +96,7 @@ class OrcaSlicerClient:
         if replace:
             params["replace"] = "true"
         response = await self._client.post(
-            "/profiles/processes", json=self._with_version(data), params=params
+            "/profiles/processes", json=self._prepare_payload(data), params=params
         )
         response.raise_for_status()
         return response.json()
