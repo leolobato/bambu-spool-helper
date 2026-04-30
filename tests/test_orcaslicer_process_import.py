@@ -51,7 +51,10 @@ class ImportProcessProfileTests(unittest.IsolatedAsyncioTestCase):
 
         client._client.post.assert_awaited_once_with(
             "/profiles/processes",
-            json={"name": "Custom Process"},
+            json={
+                "name": "Custom Process",
+                "version": OrcaSlicerClient.DEFAULT_PROFILE_VERSION,
+            },
             params={},
         )
         self.assertEqual(result, expected_payload)
@@ -64,8 +67,22 @@ class ImportProcessProfileTests(unittest.IsolatedAsyncioTestCase):
 
         client._client.post.assert_awaited_once_with(
             "/profiles/processes",
-            json={"name": "X"},
+            json={"name": "X", "version": OrcaSlicerClient.DEFAULT_PROFILE_VERSION},
             params={"replace": "true"},
+        )
+
+    async def test_preserves_caller_supplied_version(self) -> None:
+        client = _make_client()
+        client._client.post = AsyncMock(return_value=_mock_response({"setting_id": "X", "name": "X"}))
+
+        await client.import_process_profile(
+            {"name": "X", "version": "1.8.0.13"}
+        )
+
+        client._client.post.assert_awaited_once_with(
+            "/profiles/processes",
+            json={"name": "X", "version": "1.8.0.13"},
+            params={},
         )
 
 

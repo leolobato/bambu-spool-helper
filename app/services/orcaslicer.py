@@ -14,6 +14,14 @@ logger = logging.getLogger(__name__)
 
 
 class OrcaSlicerClient:
+    # Schema version stamped on outgoing imports when the caller doesn't
+    # supply one. OrcaSlicer Desktop's GUI rejects user JSONs that lack a
+    # parseable `version` field (`Semver::parse("")` returns nothing and
+    # `PresetBundle::load_user_presets` silently bails out), so any profile
+    # we save through the API needs one to remain round-trippable to the
+    # desktop GUI. Tracks the schema OrcaSlicer 2.3.2 itself stamps.
+    DEFAULT_PROFILE_VERSION = "1.9.0.21"
+
     def __init__(self, base_url: str, machine_id: str, detail_fetch_concurrency: int = 10) -> None:
         self._default_machine_id = str(machine_id or "").strip()
         self._detail_fetch_concurrency = max(1, detail_fetch_concurrency)
@@ -28,8 +36,16 @@ class OrcaSlicerClient:
     async def close(self) -> None:
         await self._client.aclose()
 
+    @classmethod
+    def _with_version(cls, data: dict[str, Any]) -> dict[str, Any]:
+        """Return a copy of `data` with `version` stamped if missing or empty."""
+        existing = data.get("version")
+        if isinstance(existing, str) and existing.strip():
+            return data
+        return {**data, "version": cls.DEFAULT_PROFILE_VERSION}
+
     async def import_profile(self, data: dict[str, Any], machine_id: str | None = None) -> dict[str, Any]:
-        response = await self._client.post("/profiles/filaments", json=data)
+        response = await self._client.post("/profiles/filaments", json=self._with_version(data))
         response.raise_for_status()
         payload = self._normalize_profile_payload(response.json())
         self._profiles_by_machine.clear()
@@ -50,7 +66,9 @@ class OrcaSlicerClient:
         params: dict[str, str] = {}
         if replace:
             params["replace"] = "true"
-        response = await self._client.post("/profiles/processes", json=data, params=params)
+        response = await self._client.post(
+            "/profiles/processes", json=self._with_version(data), params=params
+        )
         response.raise_for_status()
         return response.json()
 
