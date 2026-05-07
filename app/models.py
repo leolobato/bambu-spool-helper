@@ -93,6 +93,7 @@ class ActivateRequest(BaseModel):
     nozzle_temp_min: int = 0
     nozzle_temp_max: int = 0
     bed_temp: int = 0
+    setting_id: str = ""
 
     @field_validator("filament_type")
     @classmethod

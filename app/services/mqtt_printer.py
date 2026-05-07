@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import ssl
 import threading
 import time
@@ -16,6 +17,7 @@ logger = logging.getLogger(__name__)
 MQTT_PORT = 8883
 MQTT_USERNAME = "bblp"
 MQTT_IDLE_TIMEOUT_SECONDS = 20
+MQTT_PROBE_TIMEOUT_SECONDS = 2.5
 
 
 class TrayData:
@@ -84,6 +86,46 @@ class MQTTPrinterClient:
     def configured(self) -> bool:
         return bool(self._ip and self._access_code and self._serial)
 
+    def _probe_broker_reachability(self) -> str | None:
+        """Synchronous TCP+TLS probe to surface a specific cause before paho's
+        async connect, whose `on_connect_fail` callback hides the underlying
+        socket/TLS exception.
+
+        Returns a human-readable error message, or None on success.
+        """
+        endpoint = f"{self._ip}:{MQTT_PORT}"
+        try:
+            with socket.create_connection(
+                (self._ip, MQTT_PORT), timeout=MQTT_PROBE_TIMEOUT_SECONDS
+            ) as sock:
+                ctx = ssl.SSLContext(ssl.PROTOCOL_TLS_CLIENT)
+                ctx.check_hostname = False
+                ctx.verify_mode = ssl.CERT_NONE
+                with ctx.wrap_socket(sock, server_hostname=self._ip):
+                    return None
+        except socket.gaierror as exc:
+            return f"Cannot resolve printer host {self._ip!r}: {exc}"
+        except ConnectionRefusedError:
+            return (
+                f"Connection refused by {endpoint}. Likely another MQTT client "
+                "(e.g. bambu-gateway) already holds the printer's broker slot, "
+                "or LAN/Developer Mode is disabled on the printer."
+            )
+        except ConnectionResetError:
+            return (
+                f"Connection reset by {endpoint} during handshake. "
+                "Likely another MQTT client is already connected to the printer."
+            )
+        except (TimeoutError, socket.timeout):
+            return (
+                f"Timed out reaching {endpoint}. Check the printer is powered "
+                "on and the IP is correct."
+            )
+        except ssl.SSLError as exc:
+            return f"TLS handshake failed with {endpoint}: {exc}"
+        except OSError as exc:
+            return f"Network error reaching {endpoint}: {exc}"
+
     def connect(self) -> None:
         if not self.configured:
             logger.warning("MQTT not configured; activation commands will be accepted but not sent")
@@ -105,6 +147,15 @@ class MQTTPrinterClient:
             MQTT_USERNAME,
             len(self._access_code),
         )
+
+        probe_error = self._probe_broker_reachability()
+        if probe_error:
+            logger.error("MQTT pre-connect probe failed: %s", probe_error)
+            with self._lock:
+                self._connected = False
+                self._last_error = probe_error
+            return
+
         client_id = f"spool-helper-{self._serial[-6:]}-{int(time.time())}"
         logger.info("Using MQTT client_id=%s", client_id)
         client = mqtt.Client(
@@ -193,6 +244,7 @@ class MQTTPrinterClient:
         nozzle_temp_max: int,
         filament_type: str,
         *,
+        setting_id: str | None = None,
         tag_uid: str | None = None,
         bed_temp: int | None = None,
         tray_weight: int | None = None,
@@ -230,6 +282,8 @@ class MQTTPrinterClient:
                 "tray_type": filament_type,
             }
         }
+        if setting_id:
+            payload["print"]["setting_id"] = setting_id
         if tag_uid:
             payload["print"]["tag_uid"] = tag_uid
         if bed_temp is not None:
@@ -436,10 +490,17 @@ class MQTTPrinterClient:
             )
 
     def _on_connect_fail(self, client, userdata) -> None:
+        # Re-probe synchronously to capture the underlying socket/TLS error,
+        # since paho v2 doesn't pass the exception into this callback.
+        probe_error = self._probe_broker_reachability()
+        message = probe_error or (
+            f"MQTT network connect failed to {self._ip}:{MQTT_PORT} "
+            "(no specific cause from probe — transient or already recovered)"
+        )
         with self._lock:
             self._connected = False
-            self._last_error = "MQTT network connect failed"
-        logger.error("MQTT network connect failed (IP unreachable, TLS negotiation, or socket failure)")
+            self._last_error = message
+        logger.error("MQTT network connect failed: %s", message)
 
     def _on_disconnect(self, client, userdata, disconnect_flags, reason_code, properties=None) -> None:
         reason_details = self._reason_details(reason_code)

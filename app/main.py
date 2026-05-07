@@ -12,6 +12,7 @@ from app import __version__
 from app.config import get_settings
 from app.models import ActivationRecord
 from app.routers import api, web
+from app.services.gateway_activator import GatewayActivator
 from app.services.mqtt_printer import MQTTPrinterClient
 from app.services.orcaslicer import OrcaSlicerClient
 from app.services.spoolman import SpoolmanClient
@@ -30,11 +31,18 @@ async def lifespan(app: FastAPI):
         detail_fetch_concurrency=settings.detail_fetch_concurrency,
     )
     spoolman = SpoolmanClient(settings.spoolman_url)
-    mqtt = MQTTPrinterClient(
-        ip=settings.printer_ip,
-        access_code=settings.printer_access_code,
-        serial=settings.printer_serial,
-    )
+    if settings.gateway_enabled:
+        logger.info("Routing printer commands through bambu-gateway at %s", settings.bambu_gateway_url)
+        mqtt = GatewayActivator(
+            gateway_url=settings.bambu_gateway_url,
+            printer_serial=settings.printer_serial,
+        )
+    else:
+        mqtt = MQTTPrinterClient(
+            ip=settings.printer_ip,
+            access_code=settings.printer_access_code,
+            serial=settings.printer_serial,
+        )
 
     app.state.settings = settings
     app.state.orcaslicer = orcaslicer

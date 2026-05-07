@@ -60,6 +60,14 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
 
     profile_name = f"{filament_type} ({ams_filament_id})"
 
+    setting_id = (payload.setting_id or "").strip()
+    if not setting_id:
+        # Required by gateway routing; resolved here so legacy /activate callers
+        # that only send filament_id keep working when a gateway is wired up.
+        resolved = await request.app.state.orcaslicer.find_profile(filament_id=ams_filament_id)
+        if resolved is not None:
+            setting_id = (resolved.setting_id or "").strip()
+
     success, mqtt_message = mqtt.activate_filament(
         tray=payload.tray,
         tray_info_idx=ams_filament_id,
@@ -67,6 +75,7 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
         nozzle_temp_min=payload.nozzle_temp_min,
         nozzle_temp_max=payload.nozzle_temp_max,
         filament_type=filament_type,
+        setting_id=setting_id or None,
         bed_temp=payload.bed_temp or None,
         cali_idx=-1,
         remain=-1,

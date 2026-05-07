@@ -1905,6 +1905,7 @@ async def assign_spool_to_tray(
         nozzle_temp_min=profile.nozzle_temp_min,
         nozzle_temp_max=profile.nozzle_temp_max,
         filament_type=activation_filament_type,
+        setting_id=(profile.setting_id or "").strip() or None,
         tag_uid=tray.tag_uid or None,
         bed_temp=profile.bed_temp_min,
         tray_weight=tray.tray_weight if tray.tray_weight > 0 else None,

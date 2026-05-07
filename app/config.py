@@ -46,10 +46,15 @@ class Settings:
     default_machine_profile_id: str
     port: int
     detail_fetch_concurrency: int
+    bambu_gateway_url: str
 
     @property
     def mqtt_enabled(self) -> bool:
         return bool(self.printer_ip and self.printer_access_code and self.printer_serial)
+
+    @property
+    def gateway_enabled(self) -> bool:
+        return bool(self.bambu_gateway_url and self.printer_serial)
 
 
 @lru_cache(maxsize=1)
@@ -63,4 +68,5 @@ def get_settings() -> Settings:
         default_machine_profile_id=_env_first(("DEFAULT_MACHINE_PROFILE_ID", "DEFAULT_MACHINE_SETTING_ID"), "GM020"),
         port=_env_int("PORT", 9817),
         detail_fetch_concurrency=max(1, _env_int("DETAIL_FETCH_CONCURRENCY", 10)),
+        bambu_gateway_url=_env_str("BAMBU_GATEWAY_URL").rstrip("/"),
     )
