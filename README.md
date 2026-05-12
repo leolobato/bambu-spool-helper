@@ -6,7 +6,7 @@ Spoolman, link each one to an OrcaSlicer / Bambu filament profile, and push
 those settings straight into the printer's AMS over MQTT — no slicer round-trip
 required.
 
-It pairs with [orcaslicer-cli](https://github.com/leolobato/orcaslicer-cli) for
+It pairs with [orcaslicer-headless](https://github.com/leolobato/orcaslicer-headless) for
 the profile catalog (so you can use your own custom filament profiles, not just
 the built-in Bambu ones) and works with any Bambu Lab printer in
 **developer / LAN mode**.
@@ -21,7 +21,7 @@ Raspberry Pi alongside Spoolman.
 - **REST API** compatible with the original macOS spool-helper app
 - **Direct AMS activation** over MQTT — sets filament type, color, and nozzle/bed temperatures on a chosen tray
 - **AMS + external spool support** — trays 0–3 for AMS slots, tray 4 for the external spool holder
-- **Custom profile support** via orcaslicer-cli — works with user profiles, not just system ones
+- **Custom profile support** via orcaslicer-headless — works with user profiles, not just system ones
 - **Create profiles from filament JSON** — paste an exported Bambu/OrcaSlicer filament JSON and the UI builds an AMS-assignable profile, prompting for missing fields (e.g. textured-plate temperature)
 - **Smart matching** — exact `(setting_id, filament_id)` first, falling back to filament ID, then scoring by material, type, and source priority (user > system)
 - **Graceful degradation** — runs fine without printer credentials; only the activation step is skipped
@@ -29,7 +29,7 @@ Raspberry Pi alongside Spoolman.
 
 ## How It Works
 
-1. On startup, fetches the filament profile catalog from `orcaslicer-cli` and caches it in memory
+1. On startup, fetches the filament profile catalog from `orcaslicer-headless` and caches it in memory
 2. Reads your filament inventory from Spoolman
 3. You link each Spoolman filament to a Bambu profile in the web UI; the link is stored back in Spoolman as extra fields (double-JSON-encoded `bambu_filament_id`, `bambu_setting_id`, etc.)
 4. When you click **Activate** on a tray, the app publishes an `ams_filament_setting` MQTT command to `device/{serial}/request` over TLS (port 8883), and the printer's AMS picks up the new settings instantly
@@ -42,7 +42,7 @@ You'll need:
 
 - A Bambu Lab printer with **Developer Mode** enabled (the access code, IP, and serial are in the printer's network settings)
 - A running [Spoolman](https://github.com/Donkie/Spoolman) instance
-- A running [orcaslicer-cli](https://github.com/leolobato/orcaslicer-cli) instance
+- A running [orcaslicer-headless](https://github.com/leolobato/orcaslicer-headless) instance
 
 ### Run with Docker (recommended)
 
@@ -64,7 +64,7 @@ to other containers by hostname):
 
 ```bash
 # Create the .env file with your printer credentials, then:
-docker network create spoolnet   # shared with orcaslicer-cli and Spoolman
+docker network create spoolnet   # shared with orcaslicer-headless and Spoolman
 docker compose up -d
 ```
 
@@ -97,14 +97,14 @@ All configuration is via environment variables (loaded from `.env` if present).
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `ORCASLICER_URL` | `http://orcaslicer:8000` | orcaslicer-cli base URL — required for the profile catalog |
+| `ORCASLICER_URL` | `http://orcaslicer:8000` | orcaslicer-headless base URL — required for the profile catalog |
 | `SPOOLMAN_URL` | `http://spoolman:7912` | Spoolman base URL — required for filament inventory |
 | `PRINTER_IP` | _(empty)_ | Bambu printer IP address — leave empty to disable MQTT |
 | `PRINTER_ACCESS_CODE` | _(empty)_ | Printer access code (from printer's network settings) |
 | `PRINTER_SERIAL` | _(empty)_ | Printer serial number |
 | `DEFAULT_MACHINE_PROFILE_ID` | `GM020` | Machine profile used to filter AMS-assignable filaments (`GM020` = A1 mini). Also accepts the legacy name `DEFAULT_MACHINE_SETTING_ID`. |
 | `PORT` | `9817` | HTTP server port |
-| `DETAIL_FETCH_CONCURRENCY` | `10` | Max concurrent profile-detail requests against orcaslicer-cli |
+| `DETAIL_FETCH_CONCURRENCY` | `10` | Max concurrent profile-detail requests against orcaslicer-headless |
 
 Printer variables are optional. Without them the service runs as a read-only
 inventory linker — useful for prepping spool data ahead of time, or for running
@@ -117,7 +117,7 @@ on a host that can't reach the printer.
 | `GET` | `/status` | Health check + loaded profile count |
 | `GET` | `/profiles?search=term` | List filament profiles, optionally filtered case-insensitively |
 | `POST` | `/activate` | Send a filament profile to a printer tray over MQTT |
-| `POST` | `/reload` | Trigger orcaslicer-cli's `POST /profiles/reload`, then refresh the cached AMS-assignable profile list |
+| `POST` | `/reload` | Trigger orcaslicer-headless's `POST /profiles/reload`, then refresh the cached AMS-assignable profile list |
 | `GET` | `/web/` | HTMX web interface |
 
 ### `POST /activate`
@@ -147,7 +147,7 @@ The web UI lives at `/web/` and lets you:
   the UI prompts for them before saving so the result is always
   AMS-assignable
 
-Imported filament JSON is resolved through orcaslicer-cli first; only when the
+Imported filament JSON is resolved through orcaslicer-headless first; only when the
 resolved profile lacks a valid `filament_type` does the form fall back to
 asking for one.
 
@@ -173,8 +173,8 @@ Bambu Spool Helper is the **Spoolman ↔ AMS bridge** in a suite of self-hosted 
 
 **Self-hosted services**
 
-- **[bambu-gateway](https://github.com/leolobato/bambu-gateway)** — Printer control plane and slicing web app. Talks to printers over MQTT/FTPS to monitor status, send commands, and upload jobs. Slices and prints 3MF files from the browser using `orcaslicer-cli`.
-- **[orcaslicer-cli](https://github.com/leolobato/orcaslicer-cli)** — Headless OrcaSlicer wrapped in a REST API. Owns the filament/process/machine profile catalog (including custom user profiles) and does the actual slicing. Other services in the suite call it for slicing and profile data.
+- **[bambu-gateway](https://github.com/leolobato/bambu-gateway)** — Printer control plane and slicing web app. Talks to printers over MQTT/FTPS to monitor status, send commands, and upload jobs. Slices and prints 3MF files from the browser using `orcaslicer-headless`.
+- **[orcaslicer-headless](https://github.com/leolobato/orcaslicer-headless)** — Headless OrcaSlicer wrapped in a REST API. Owns the filament/process/machine profile catalog (including custom user profiles) and does the actual slicing. Other services in the suite call it for slicing and profile data.
 - **Bambu Spool Helper** — this project.
 
 **iOS apps**
