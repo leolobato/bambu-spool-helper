@@ -20,6 +20,32 @@ MQTT_IDLE_TIMEOUT_SECONDS = 20
 MQTT_PROBE_TIMEOUT_SECONDS = 2.5
 
 
+def _is_placeholder_tray_uuid(uuid: str) -> bool:
+    """Return True for the all-zeros UUID Bambu reports for unscanned/empty
+    AMS slots (e.g. `"00000000000000000000000000000000"`)."""
+    cleaned = (uuid or "").replace("-", "").strip()
+    return not cleaned or all(c == "0" for c in cleaned)
+
+
+def _synthetic_slot_uuid(printer_serial: str, tray_id: int) -> str:
+    """Return a stable per-slot identifier for non-RFID AMS spools.
+
+    The Bambu AMS reports `00000000…` as `tray_uuid` for non-RFID spools.
+    That value is not unique across slots, so it can't be used as a
+    Spoolman binding key. When a real RFID UUID is absent but the slot
+    has filament loaded, callers can use this synthetic id to track the
+    spool by slot. Carries a small fragility: if the user physically
+    moves a non-RFID spool to a different slot without re-assigning
+    through the helper, the binding will be out of date.
+    """
+    return f"slot:{printer_serial}:{tray_id}"
+
+
+def is_synthetic_slot_uuid(uuid: str) -> bool:
+    """Return True if `uuid` was produced by `_synthetic_slot_uuid`."""
+    return bool(uuid) and uuid.startswith("slot:")
+
+
 class TrayData:
     """Raw tray data from MQTT report."""
 
@@ -342,6 +368,24 @@ class MQTTPrinterClient:
         if len(compact) == 8:
             return compact
         return "FFFFFFFF"
+
+    def get_tray_uuid(self, tray_id: int) -> str | None:
+        """Return a binding identifier for the given tray slot.
+
+        Returns the real `tray_uuid` if the AMS reports one (Bambu RFID
+        spool). Returns a synthetic `slot:{serial}:{tray_id}` when the
+        slot has filament loaded but no RFID tag (non-Bambu spool).
+        Returns `None` when the slot is truly empty/unknown.
+        """
+        tray = self._trays.get(tray_id)
+        if tray is None:
+            return None
+        uuid = getattr(tray, "tray_uuid", "") or ""
+        if not _is_placeholder_tray_uuid(uuid):
+            return uuid
+        if getattr(tray, "tray_info_idx", ""):
+            return _synthetic_slot_uuid(self._serial, tray_id)
+        return None
 
     def get_tray_data(self) -> dict[int, TrayData]:
         with self._lock:

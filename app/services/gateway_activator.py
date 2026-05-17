@@ -9,13 +9,14 @@ and we go through its HTTP API for both reads (`/api/ams`) and writes
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timezone
 from typing import Any
 
 import httpx
 
-from app.services.mqtt_printer import TrayData
+from app.services.mqtt_printer import TrayData, _is_placeholder_tray_uuid, _synthetic_slot_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +31,8 @@ class GatewayActivator:
         self._last_error: str | None = None
         self._last_message_at: datetime | None = None
         self._trays: dict[int, TrayData] = {}
+        self._printer_online: bool | None = None
+        self._printer_state: str | None = None
 
     @property
     def configured(self) -> bool:
@@ -44,24 +47,74 @@ class GatewayActivator:
     def request_full_status(self) -> None:
         if not self.configured:
             return
+        if not self._refresh_printer_status_safely():
+            return
         self._refresh_trays_safely()
 
     def get_tray_data(self) -> dict[int, TrayData]:
         if not self.configured:
             return {}
+        if self._printer_online is False:
+            return dict(self._trays)
         if not self._trays:
             self._refresh_trays_safely()
         return dict(self._trays)
 
+    def get_tray_uuid(self, tray_id: int) -> str | None:
+        """Return a binding identifier for the given tray slot.
+
+        Returns the real `tray_uuid` if the AMS reports one (Bambu RFID
+        spool). Returns a synthetic `slot:{serial}:{tray_id}` when the
+        slot has filament loaded but no RFID tag (non-Bambu spool).
+        Returns `None` when the slot is truly empty/unknown. Call
+        `request_full_status()` beforehand if you need a fresh read.
+        """
+        tray = self._trays.get(tray_id)
+        if tray is None:
+            return None
+        uuid = getattr(tray, "tray_uuid", "") or ""
+        if not _is_placeholder_tray_uuid(uuid):
+            return uuid
+        if getattr(tray, "tray_info_idx", ""):
+            return _synthetic_slot_uuid(self._serial, tray_id)
+        return None
+
+    async def get_tray_uuids(self) -> dict[int, str]:
+        """Return {tray_id: tray_uuid} for the moment of the call.
+
+        Async wrapper around the sync `get_tray_data` (which issues an HTTP
+        GET inside a thread-safe call). For slots with a real RFID uuid,
+        returns it; for slots that have filament loaded but no RFID tag,
+        returns the synthetic `slot:<serial>:<tray_id>` so non-Bambu spools
+        bound by slot still resolve. Truly empty slots are omitted.
+        """
+
+        def _read():
+            data = self.get_tray_data()
+            result: dict[int, str] = {}
+            for tid, t in data.items():
+                uuid = getattr(t, "tray_uuid", "") or ""
+                if uuid and not _is_placeholder_tray_uuid(uuid):
+                    result[tid] = uuid
+                elif getattr(t, "tray_info_idx", ""):
+                    result[tid] = _synthetic_slot_uuid(self._serial, tid)
+            return result
+        return await asyncio.to_thread(_read)
+
     def get_connection_status(self) -> dict[str, Any]:
         return {
             "configured": self.configured,
-            "connected": self.configured and self._last_error is None,
+            "connected": (
+                self.configured
+                and self._last_error is None
+                and self._printer_online is not False
+            ),
             "tray_count": len(self._trays),
             "last_error": self._last_error,
             "last_message_at": (
                 self._last_message_at.isoformat() if self._last_message_at else None
             ),
+            "printer_state": self._printer_state,
         }
 
     def activate_filament(
@@ -138,12 +191,73 @@ class GatewayActivator:
             url = f"{self._gateway_url}/api/ams"
             resp = self._client.get(url, params={"printer_id": self._serial})
             resp.raise_for_status()
-            self._trays = _build_tray_data(resp.json())
+            fresh = _build_tray_data(resp.json())
+            self._trays = _merge_sticky_tray_uuids(self._trays, fresh)
             self._last_message_at = datetime.now(timezone.utc)
             self._last_error = None
         except httpx.HTTPError as exc:
             self._last_error = f"Gateway unreachable: {exc}"
             logger.warning("Gateway tray refresh failed: %s", exc)
+
+    def _refresh_printer_status_safely(self) -> bool:
+        try:
+            url = f"{self._gateway_url}/api/printers"
+            resp = self._client.get(url)
+            resp.raise_for_status()
+            payload = resp.json()
+        except httpx.HTTPError as exc:
+            self._printer_online = False
+            self._last_error = f"Gateway unreachable: {exc}"
+            logger.warning("Gateway printer status refresh failed: %s", exc)
+            return False
+
+        printer = _find_gateway_printer(payload, self._serial)
+        if printer is None:
+            self._printer_online = False
+            self._printer_state = "missing"
+            self._last_error = f"Gateway does not list printer {self._serial}."
+            return False
+
+        state = str(printer.get("state") or "").strip().lower()
+        online = _gateway_printer_is_online(printer)
+        self._printer_online = online
+        self._printer_state = state or None
+        if not online:
+            label = state or "offline"
+            self._last_error = f"Gateway reports printer {self._serial} is {label}."
+            return False
+
+        self._last_error = None
+        return True
+
+
+def _merge_sticky_tray_uuids(
+    prev: dict[int, TrayData], fresh: dict[int, TrayData],
+) -> dict[int, TrayData]:
+    """Preserve a previously-seen real RFID UUID across a refresh that reports
+    the all-zeros placeholder.
+
+    Bambu's AMS reports the real `tray_uuid` only intermittently — often only
+    right after an RFID scan or at print start — and reverts to the all-zeros
+    placeholder while idle. Without this stickiness, an unmodified loaded
+    spool would look "unbound" between scans and the binding lookup would
+    miss it. We only stick the cached uuid when the slot's `tray_info_idx`
+    (filament_id) is unchanged; an actual swap to a different filament
+    invalidates the cache.
+    """
+    for slot, new_td in fresh.items():
+        old_td = prev.get(slot)
+        if old_td is None:
+            continue
+        new_uuid = (new_td.tray_uuid or "").strip()
+        old_uuid = (old_td.tray_uuid or "").strip()
+        if not new_uuid or _is_placeholder_tray_uuid(new_uuid):
+            same_filament = (
+                (new_td.tray_info_idx or "") == (old_td.tray_info_idx or "")
+            )
+            if same_filament and old_uuid and not _is_placeholder_tray_uuid(old_uuid):
+                new_td.tray_uuid = old_uuid
+    return fresh
 
 
 def _build_tray_data(ams_resp: dict) -> dict[int, TrayData]:
@@ -156,6 +270,27 @@ def _build_tray_data(ams_resp: dict) -> dict[int, TrayData]:
     if vt:
         trays[4] = _to_tray_data(vt)
     return trays
+
+
+def _find_gateway_printer(payload: dict[str, Any], printer_serial: str) -> dict[str, Any] | None:
+    printers = payload.get("printers")
+    if not isinstance(printers, list):
+        return None
+    for printer in printers:
+        if not isinstance(printer, dict):
+            continue
+        if str(printer.get("id") or "").strip() == printer_serial:
+            return printer
+    return None
+
+
+def _gateway_printer_is_online(printer: dict[str, Any]) -> bool:
+    if "online" in printer:
+        return bool(printer.get("online"))
+    state = str(printer.get("state") or "").strip().lower()
+    if state:
+        return state not in {"offline", "disconnected", "unavailable"}
+    return True
 
 
 def _to_tray_data(raw: dict) -> TrayData:

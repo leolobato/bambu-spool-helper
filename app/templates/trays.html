@@ -4,10 +4,28 @@
 <div
   id="trays-content"
   hx-get="/web/trays/content?machine={{ machine_id }}"
-  hx-trigger="every 8s"
+  hx-trigger="load, every 8s"
   hx-swap="innerHTML"
 >
-  {% include "partials/trays_content.html" %}
+  <div class="mb-4 flex items-center justify-between gap-3">
+    <h2 class="text-sm font-semibold text-slate-300">AMS · <span class="font-mono text-slate-200">{{ machine_id }}</span></h2>
+    <div class="inline-flex items-center gap-1.5 rounded-full border border-slate-700 bg-slate-900/60 px-3 py-1 text-xs text-slate-300">
+      <span class="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-slate-400"></span>
+      <span>Loading AMS trays</span>
+    </div>
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+    {% for _ in range(5) %}
+      <div class="min-h-56 rounded-lg border border-slate-800 bg-slate-900/50 p-4">
+        <div class="mb-4 h-4 w-20 animate-pulse rounded bg-slate-800"></div>
+        <div class="mb-3 h-10 animate-pulse rounded bg-slate-800"></div>
+        <div class="space-y-2">
+          <div class="h-3 animate-pulse rounded bg-slate-800"></div>
+          <div class="h-3 w-2/3 animate-pulse rounded bg-slate-800"></div>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
 </div>
 <script>
   (function () {
@@ -22,6 +40,19 @@
       return isElement(node) && Boolean(node.closest("#trays-content"));
     }
 
+    function isInsideModal(node) {
+      return isElement(node) && Boolean(node.closest("#modal"));
+    }
+
+    function isInsideRefreshPauseScope(node) {
+      return isInsideTraysContent(node) || isInsideModal(node);
+    }
+
+    function modalIsOpen() {
+      const modal = document.getElementById("modal");
+      return Boolean(modal && modal.children.length > 0);
+    }
+
     function isInteractive(node) {
       return isElement(node) && node.matches("input, select, textarea, button");
     }
@@ -31,25 +62,25 @@
     }
 
     document.body.addEventListener("focusin", function (event) {
-      if (isInsideTraysContent(event.target) && isInteractive(event.target)) {
+      if (isInsideRefreshPauseScope(event.target) && isInteractive(event.target)) {
         pauseRefresh();
       }
     });
 
     document.body.addEventListener("input", function (event) {
-      if (isInsideTraysContent(event.target)) {
+      if (isInsideRefreshPauseScope(event.target)) {
         pauseRefresh();
       }
     });
 
     document.body.addEventListener("change", function (event) {
-      if (isInsideTraysContent(event.target)) {
+      if (isInsideRefreshPauseScope(event.target)) {
         pauseRefresh();
       }
     });
 
     document.body.addEventListener("mousedown", function (event) {
-      if (isInsideTraysContent(event.target)) {
+      if (isInsideRefreshPauseScope(event.target)) {
         pauseRefresh();
       }
     });
@@ -70,16 +101,50 @@
         return;
       }
 
+      if (modalIsOpen()) {
+        event.preventDefault();
+        return;
+      }
+
       if (document.hidden) {
         event.preventDefault();
         return;
       }
 
       const active = document.activeElement;
-      const hasFocusedControl = isInsideTraysContent(active) && isInteractive(active);
+      const hasFocusedControl = isInsideRefreshPauseScope(active) && isInteractive(active);
       if (hasFocusedControl || Date.now() < pauseUntil) {
         event.preventDefault();
       }
+    });
+
+    function togglePopover(toggle) {
+      const wrapper = toggle.closest("[data-status-pill]");
+      if (!wrapper) return;
+      const popover = wrapper.querySelector("[data-status-popover]");
+      if (!popover) return;
+      const open = popover.classList.contains("hidden") === false;
+      popover.classList.toggle("hidden");
+      toggle.setAttribute("aria-expanded", open ? "false" : "true");
+    }
+
+    document.body.addEventListener("click", function (event) {
+      const target = event.target;
+      if (!isElement(target)) return;
+      const toggle = target.closest("[data-status-toggle]");
+      if (toggle) {
+        event.stopPropagation();
+        togglePopover(toggle);
+        return;
+      }
+      // Click outside any popover closes them all.
+      document.querySelectorAll("[data-status-popover]").forEach(function (p) {
+        if (!p.classList.contains("hidden") && !p.contains(target)) {
+          p.classList.add("hidden");
+          const tgl = p.closest("[data-status-pill]").querySelector("[data-status-toggle]");
+          if (tgl) tgl.setAttribute("aria-expanded", "false");
+        }
+      });
     });
   })();
 </script>

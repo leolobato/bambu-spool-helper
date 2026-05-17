@@ -1,51 +1,57 @@
-<div class="rounded-xl border border-slate-800 bg-panel p-4 space-y-3">
-  <div class="flex items-center justify-between">
-    <h3 class="text-base font-semibold">{{ tray.label }}</h3>
-    <span class="inline-block h-5 w-5 rounded-full border border-black/30" style="background: {{ tray.color_css }}"></span>
+{% set is_bound = binding is defined and binding and binding.bound_spool %}
+{% set bound_spool = binding.bound_spool if is_bound else None %}
+
+<div class="flex h-full flex-col gap-3 rounded-xl border border-slate-800 bg-panel p-4">
+  <div class="flex items-center gap-3">
+    {% if tray.is_empty %}
+      <span class="inline-block h-9 w-9 rounded-md border border-dashed border-slate-600"></span>
+    {% else %}
+      <span class="inline-block h-9 w-9 rounded-md border border-black/30" style="background: {{ tray.color_css }}"></span>
+    {% endif %}
+    <div class="min-w-0">
+      <div class="text-[10px] font-medium uppercase tracking-wider text-slate-500">{{ tray.label }}</div>
+      {% if tray.is_empty %}
+        <div class="text-sm italic text-slate-500">Empty</div>
+      {% else %}
+        {% set display_material = (bound_spool.filament.material if is_bound and bound_spool.filament.material else tray.tray_type) %}
+        {% set display_brand = (bound_spool.display_name if is_bound and bound_spool.display_name else tray.tray_sub_brands) %}
+        <div class="truncate text-sm font-semibold text-ink">{{ display_material or "—" }}</div>
+        {% if display_brand %}
+          <div class="truncate text-xs text-slate-400">{{ display_brand }}</div>
+        {% endif %}
+      {% endif %}
+    </div>
   </div>
 
-  {% if tray.is_empty %}
-    <div class="rounded-md border border-dashed border-slate-700 p-3 text-sm text-slate-400">Empty</div>
-  {% else %}
-    <div class="grid grid-cols-2 gap-2 text-sm">
-      <div class="rounded-md border border-slate-700 p-2">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Type</div>
-        <div class="font-mono text-slate-200">{{ tray.tray_type or "-" }}</div>
-      </div>
-      <div class="rounded-md border border-slate-700 p-2">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Filament ID</div>
-        <div class="font-mono text-slate-200">{{ tray.tray_info_idx or "-" }}</div>
-      </div>
-      <div class="rounded-md border border-slate-700 p-2 col-span-2">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Sub Brand</div>
-        <div class="font-mono text-slate-200">{{ tray.tray_sub_brands or "-" }}</div>
-      </div>
-      <div class="rounded-md border border-slate-700 p-2 col-span-2">
-        <div class="text-xs uppercase tracking-wide text-slate-400">Nozzle Temp</div>
-        <div class="font-mono text-slate-200">{{ tray.nozzle_temp_min }}-{{ tray.nozzle_temp_max }} &deg;C</div>
-      </div>
-    </div>
-  {% endif %}
-
-  {% if not tray.is_empty and tray.tray_info_idx %}
-    {% if matched_profile %}
-      <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-2 text-xs text-emerald-200">
-        <div class="font-medium">Matched Orca Profile</div>
-        <div class="mt-1 text-emerald-100">{{ matched_profile.name }}</div>
-        <div class="mt-1 text-emerald-200/80">{{ matched_profile.filament_type }} | filament_id={{ matched_profile.filament_id }}</div>
+  {% if not tray.is_empty %}
+    {% if is_bound %}
+      <div class="flex items-center gap-2 text-xs text-emerald-300">
+        <span class="inline-flex h-4 w-4 items-center justify-center rounded-full bg-emerald-500/90 text-[10px] font-bold text-emerald-950">&#10003;</span>
+        <span class="font-mono">#{{ bound_spool.id }}</span>
+        {% if bound_spool.remaining_weight is not none %}
+          <span class="text-slate-400">· {{ bound_spool.remaining_weight|round|int }}g left</span>
+        {% endif %}
       </div>
     {% else %}
-      <div class="rounded-md border border-amber-700/60 bg-amber-900/20 p-2 text-xs text-amber-200">
-        No profile matches filament_id={{ tray.tray_info_idx }}.
-      </div>
+      <div class="text-xs text-slate-400">Not bound to a Spoolman spool.</div>
     {% endif %}
-  {% endif %}
 
-  {% if assign_success is defined and assign_success %}
-    <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-2 text-xs text-emerald-200">{{ assign_success }}</div>
-  {% endif %}
+    {% if matched_profile %}
+      <span class="inline-flex w-fit items-center gap-1 rounded-md border border-emerald-800/60 bg-emerald-900/30 px-1.5 py-0.5 text-[10px] font-medium text-emerald-200">Profile matched</span>
+    {% elif tray.tray_info_idx %}
+      <span class="inline-flex w-fit items-center gap-1 rounded-md border border-amber-800/60 bg-amber-900/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">No profile match</span>
+    {% endif %}
 
-  <div id="tray-detail-{{ tray.tray_index }}">
-    {% include "partials/tray_detail.html" %}
-  </div>
+    <div class="mt-auto">
+      <button
+        type="button"
+        hx-get="/web/tray/{{ tray.tray_index }}/bind?machine={{ machine_id }}"
+        hx-target="#modal"
+        hx-swap="innerHTML"
+        class="w-full rounded-md border px-3 py-1.5 text-sm transition {% if is_bound %}border-slate-700 text-slate-200 hover:bg-slate-800{% else %}border-cyan-700 bg-cyan-900/30 text-cyan-100 hover:bg-cyan-900/60{% endif %}"
+      >
+        {% if is_bound %}Change spool{% else %}Bind spool…{% endif %}
+      </button>
+    </div>
+  {% endif %}
 </div>

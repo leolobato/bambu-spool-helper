@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 import httpx
+
+logger = logging.getLogger(__name__)
 
 from app.models import SpoolmanFilament, SpoolmanSpool
 
@@ -49,6 +52,15 @@ class SpoolmanClient:
             "name": "AMS Filament Type",
             "field_type": "text",
             "unit": "",
+        },
+    ]
+    REQUIRED_SPOOL_EXTRA_FIELDS = [
+        {
+            "key": "bambu_tray_uuid",
+            "name": "Bambu Tray UUID",
+            "field_type": "text",
+            # Intentionally no `unit`: Spoolman's schema rejects empty
+            # strings (min_length: 1), and there is no unit for a UUID.
         },
     ]
 
@@ -116,6 +128,53 @@ class SpoolmanClient:
         for spec in validation["missing"]:
             await self._create_filament_field(spec)
 
+    async def _get_spool_fields(self) -> list[dict[str, Any]]:
+        resp = await self._client.get("/api/v1/field/spool")
+        resp.raise_for_status()
+        return resp.json() or []
+
+    async def _create_spool_field(self, spec: dict[str, Any]) -> bool:
+        key = spec["key"]
+        payload = {k: v for k, v in spec.items() if k != "key"}
+        resp = await self._client.post(f"/api/v1/field/spool/{key}", json=payload)
+        if resp.status_code in (200, 201):
+            return True
+        logger.warning("Failed to create spool extra field %s: %s", key, resp.text)
+        return False
+
+    async def ensure_spool_extra_fields(self) -> None:
+        existing_keys = {f.get("key") for f in await self._get_spool_fields()}
+        for spec in self.REQUIRED_SPOOL_EXTRA_FIELDS:
+            if spec["key"] not in existing_keys:
+                await self._create_spool_field(spec)
+
+    async def validate_required_spool_fields(self) -> dict[str, Any]:
+        fields = await self._get_spool_fields()
+        return self._validate_field_specs(fields, self.REQUIRED_SPOOL_EXTRA_FIELDS)
+
+    async def ensure_required_spool_fields(self) -> dict[str, Any]:
+        initial_fields = await self._get_spool_fields()
+        initial_validation = self._validate_field_specs(initial_fields, self.REQUIRED_SPOOL_EXTRA_FIELDS)
+
+        created_keys: list[str] = []
+        errors: list[str] = []
+        for spec in initial_validation["missing"]:
+            try:
+                created = await self._create_spool_field(spec)
+            except httpx.HTTPError as exc:
+                errors.append(f"{spec['key']}: {exc}")
+                continue
+            if created:
+                created_keys.append(spec["key"])
+
+        final_fields = await self._get_spool_fields()
+        final_validation = self._validate_field_specs(final_fields, self.REQUIRED_SPOOL_EXTRA_FIELDS)
+        return {
+            "created_keys": created_keys,
+            "errors": errors,
+            "validation": final_validation,
+        }
+
     async def link_filament(
         self,
         filament_id: int,
@@ -173,6 +232,60 @@ class SpoolmanClient:
             basic_fields=basic_fields,
         )
         return validation_result
+
+    async def _get_spool(self, spool_id: int) -> dict:
+        resp = await self._client.get(f"/api/v1/spool/{spool_id}")
+        resp.raise_for_status()
+        return resp.json()
+
+    async def _patch_spool(
+        self,
+        spool_id: int,
+        extra_fields: dict[str, str | None] | None = None,
+        basic_fields: dict[str, object] | None = None,
+    ) -> None:
+        payload: dict[str, object] = {}
+        if extra_fields is not None:
+            current = await self._get_spool(spool_id)
+            merged = dict(current.get("extra") or {})
+            merged.update(extra_fields)
+            payload["extra"] = merged
+        if basic_fields:
+            payload.update(basic_fields)
+        resp = await self._client.patch(f"/api/v1/spool/{spool_id}", json=payload)
+        resp.raise_for_status()
+
+    async def bind_spool_to_tray_uuid(self, *, spool_id: int, tray_uuid: str) -> None:
+        """Set `bambu_tray_uuid` on `spool_id`, clearing the same uuid from any
+        other spool first (move-the-binding).
+
+        No-op when the target spool already holds this uuid. Self-heals the
+        `bambu_tray_uuid` field definition if it doesn't yet exist.
+
+        Spoolman PATCH rejects `null` for spool extras and merges (doesn't
+        replace) the `extra` dict, so we can't actually delete the key.
+        "Clearing" means writing the JSON-encoded empty string `""`.
+        """
+        await self.ensure_spool_extra_fields()
+
+        encoded = self._json_encode(tray_uuid)
+        cleared = self._json_encode("")
+
+        # Find existing holders of this uuid
+        resp = await self._client.get("/api/v1/spool")
+        resp.raise_for_status()
+        all_spools = resp.json() or []
+        for spool in all_spools:
+            extra = spool.get("extra") or {}
+            if extra.get("bambu_tray_uuid") == encoded and spool.get("id") != spool_id:
+                await self._patch_spool(spool["id"], extra_fields={"bambu_tray_uuid": cleared})
+
+        # Set on target unless it already has it
+        target = await self._get_spool(spool_id)
+        target_extra = target.get("extra") or {}
+        if target_extra.get("bambu_tray_uuid") == encoded:
+            return
+        await self._patch_spool(spool_id, extra_fields={"bambu_tray_uuid": encoded})
 
     async def _patch_filament(
         self,

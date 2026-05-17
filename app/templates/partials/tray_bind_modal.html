@@ -1,0 +1,85 @@
+<div
+  class="fixed inset-0 z-50 flex items-center justify-center bg-black/60 px-4"
+  hx-on:click="if (event.target === this) closeModal()"
+>
+  <div class="w-full max-w-md rounded-xl border border-slate-800 bg-panel p-5 shadow-2xl">
+    <div class="mb-1 flex items-start justify-between gap-3">
+      <h3 class="text-base font-semibold text-ink">
+        {% if binding and binding.bound_spool %}Change {{ tray.label }}{% else %}Bind {{ tray.label }}{% endif %}
+      </h3>
+      <button
+        type="button"
+        class="rounded-md border border-slate-700 px-2 py-0.5 text-xs text-slate-300 hover:bg-slate-800"
+        onclick="closeModal()"
+      >Esc</button>
+    </div>
+    <div class="mb-4 flex items-center gap-2 text-xs text-slate-400">
+      <span class="inline-block h-3 w-3 rounded-sm border border-black/30" style="background: {{ tray.color_css }}"></span>
+      {% if tray.tray_type %}{{ tray.tray_type }}{% else %}material unknown{% endif %}
+      {% if tray.tray_sub_brands %} · {{ tray.tray_sub_brands }}{% endif %}
+    </div>
+
+    <form
+      hx-post="/web/tray/{{ tray.tray_index }}/assign"
+      hx-target="#tray-card-{{ tray.tray_index }}"
+      hx-swap="innerHTML"
+    >
+      <input type="hidden" name="machine" value="{{ machine_id }}" />
+
+      <input
+        type="search"
+        name="search"
+        placeholder="Search spools by name, brand, color..."
+        autocomplete="off"
+        autofocus
+        class="w-full rounded-md border-slate-700 bg-slate-950 text-sm text-ink"
+        hx-get="/web/tray/{{ tray.tray_index }}/bind"
+        hx-target="#tray-bind-list-{{ tray.tray_index }}"
+        hx-select="#tray-bind-list-{{ tray.tray_index }}"
+        hx-swap="outerHTML"
+        hx-trigger="input changed delay:200ms"
+        hx-include="[name='machine']"
+        value="{{ search|default('', true) }}"
+      />
+
+      <div id="tray-bind-list-{{ tray.tray_index }}" class="mt-3 max-h-72 overflow-auto rounded-md border border-slate-800">
+        {% set suggested_id = (binding.suggested_spool.id if binding and binding.suggested_spool else None) %}
+        {% if spools %}
+          {% for spool in spools %}
+            {% set is_suggested = suggested_id and spool.id == suggested_id %}
+            <label class="flex cursor-pointer items-center gap-3 border-b border-slate-800 px-3 py-2 last:border-b-0 hover:bg-slate-900 {% if is_suggested %}bg-cyan-950/30{% endif %}">
+              <input
+                type="radio"
+                name="spool_id"
+                value="{{ spool.id }}"
+                class="h-4 w-4 border-slate-600 bg-slate-950 text-cyan-500"
+                {% if is_suggested %}checked{% endif %}
+                required
+              />
+              <span class="inline-block h-5 w-5 flex-shrink-0 rounded-sm border border-black/30" style="background: {{ spool.filament.color_css|default('#1e293b', true) }}"></span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-sm text-ink">{{ spool.display_name }}</span>
+                <span class="block text-xs text-slate-400">
+                  {% if spool.filament.material %}{{ spool.filament.material }}{% endif %}
+                  {% if spool.remaining_weight is not none %} · {{ spool.remaining_weight|round|int }}g remaining{% endif %}
+                </span>
+              </span>
+              <span class="font-mono text-xs text-slate-500">#{{ spool.id }}</span>
+            </label>
+          {% endfor %}
+        {% else %}
+          <div class="px-3 py-4 text-center text-xs text-slate-400">
+            {% if error %}{{ error }}{% else %}No linked spools available. Link filaments to profiles first.{% endif %}
+          </div>
+        {% endif %}
+      </div>
+
+      <div class="mt-4 flex justify-end gap-2">
+        <button type="button" class="rounded-md border border-slate-700 px-3 py-1.5 text-sm text-slate-200 hover:bg-slate-800" onclick="closeModal()">Cancel</button>
+        <button type="submit" class="rounded-md border border-cyan-700 bg-cyan-900/30 px-3 py-1.5 text-sm text-cyan-100 hover:bg-cyan-900/60">
+          {% if binding and binding.bound_spool %}Change spool{% else %}Bind spool{% endif %}
+        </button>
+      </div>
+    </form>
+  </div>
+</div>

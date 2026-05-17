@@ -1,28 +1,68 @@
-{% if error %}
-  <div class="mb-4 rounded-md border border-rose-700/60 bg-rose-900/30 p-3 text-sm text-rose-100">{{ error }}</div>
-{% endif %}
+{% set has_error = error %}
+{% set mqtt_state = mqtt_status.state if mqtt_status else "" %}
 
-{% if mqtt_status.state == "connected" %}
-  <div class="mb-4 rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm text-emerald-100">
-    {{ mqtt_status.message }}
-    {% if mqtt_status.last_message_at %}
-      <span class="text-emerald-300">Last update: {{ mqtt_status.last_message_at }}</span>
-    {% endif %}
-  </div>
-{% elif mqtt_status.state == "not_configured" %}
-  <div class="mb-4 rounded-md border border-amber-700/60 bg-amber-900/20 p-3 text-sm text-amber-100">
-    {{ mqtt_status.message }}
-  </div>
+{% if has_error or (mqtt_state and mqtt_state not in ("connected", "not_configured")) %}
+  {% set pill_color = "red" %}
+{% elif mqtt_state == "not_configured" %}
+  {% set pill_color = "amber" %}
 {% else %}
-  <div class="mb-4 rounded-md border border-rose-700/60 bg-rose-900/30 p-3 text-sm text-rose-100">
-    {{ mqtt_status.message }}
-  </div>
+  {% set pill_color = "green" %}
 {% endif %}
 
-<div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+{% set pill_palette = {
+  "green": ("border-emerald-700/60", "bg-emerald-900/20", "text-emerald-200", "bg-emerald-400"),
+  "amber": ("border-amber-700/60", "bg-amber-900/20", "text-amber-200", "bg-amber-400"),
+  "red": ("border-rose-700/60", "bg-rose-900/30", "text-rose-100", "bg-rose-400"),
+} %}
+{% set pill_border, pill_bg, pill_text, dot_bg = pill_palette[pill_color] %}
+
+{% if pill_color == "green" %}
+  {% set pill_label = "Printer connected" %}
+{% elif pill_color == "amber" and mqtt_state == "not_configured" %}
+  {% set pill_label = "Printer not configured" %}
+{% elif has_error %}
+  {% set pill_label = "Error" %}
+{% else %}
+  {% set pill_label = "Printer offline" %}
+{% endif %}
+
+<div class="mb-4 flex items-center justify-between gap-3">
+  <h2 class="text-sm font-semibold text-slate-300">AMS · <span class="font-mono text-slate-200">{{ machine_id }}</span></h2>
+  <div class="relative" data-status-pill>
+    <button
+      type="button"
+      class="inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs {{ pill_border }} {{ pill_bg }} {{ pill_text }}"
+      data-status-toggle
+      aria-expanded="false"
+    >
+      <span class="inline-block h-1.5 w-1.5 rounded-full {{ dot_bg }}"></span>
+      <span>{{ pill_label }}</span>
+    </button>
+    <div
+      class="absolute right-0 z-30 mt-2 hidden w-72 rounded-md border border-slate-800 bg-slate-950 p-3 text-xs text-slate-300 shadow-xl"
+      data-status-popover
+    >
+      {% if has_error %}
+        <div class="mb-2 rounded-md border border-rose-700/60 bg-rose-900/30 p-2 text-rose-100">{{ error }}</div>
+      {% endif %}
+      {% if mqtt_status %}
+        <div class="mb-2">
+          <div class="text-[10px] uppercase tracking-wider text-slate-500">MQTT</div>
+          <div>{{ mqtt_status.message }}</div>
+          {% if mqtt_status.last_message_at %}
+            <div class="text-slate-500">Last update: {{ mqtt_status.last_message_at }}</div>
+          {% endif %}
+        </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
   {% for tray in trays %}
     <div id="tray-card-{{ tray.tray_index }}">
       {% set matched_profile = tray_profile_matches.get(tray.tray_index) if tray_profile_matches is defined else None %}
+      {% set binding = tray_bindings.get(tray.tray_index) if tray_bindings is defined else None %}
       {% include "partials/tray_card.html" %}
     </div>
   {% endfor %}

@@ -19,8 +19,14 @@ TRAY_LABELS = ["Tray 1", "Tray 2", "Tray 3", "Tray 4", "Ext"]
 @router.get("/status", response_model=StatusResponse)
 async def get_status(request: Request) -> StatusResponse:
     settings = request.app.state.settings
-    profile_count = len(await request.app.state.orcaslicer.get_profiles(settings.default_machine_profile_id))
-    return StatusResponse(port=settings.port, profiles_loaded=profile_count)
+    profile_count = len(
+        await request.app.state.orcaslicer.get_profiles(settings.default_machine_profile_id)
+    )
+
+    return StatusResponse(
+        port=settings.port,
+        profiles_loaded=profile_count,
+    )
 
 
 @router.get("/valid-tray-types")
@@ -67,6 +73,27 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
         resolved = await request.app.state.orcaslicer.find_profile(filament_id=ams_filament_id)
         if resolved is not None:
             setting_id = (resolved.setting_id or "").strip()
+
+    if payload.spool_id is not None:
+        mqtt.request_full_status()
+        tray_uuid = mqtt.get_tray_uuid(payload.tray)
+        if tray_uuid is None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    f"Tray {payload.tray} has no UUID yet "
+                    "(AMS hasn't reported this slot). Retry once scanned."
+                ),
+            )
+        try:
+            await request.app.state.spoolman.bind_spool_to_tray_uuid(
+                spool_id=payload.spool_id, tray_uuid=tray_uuid,
+            )
+        except Exception as exc:
+            raise HTTPException(
+                status_code=502,
+                detail=f"Failed to bind spool {payload.spool_id} to tray_uuid: {exc}",
+            )
 
     success, mqtt_message = mqtt.activate_filament(
         tray=payload.tray,

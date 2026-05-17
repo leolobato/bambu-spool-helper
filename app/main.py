@@ -50,6 +50,12 @@ async def lifespan(app: FastAPI):
     app.state.mqtt = mqtt
     app.state.recent_activations: list[ActivationRecord] = []
 
+    # The `bambu_tray_uuid` spool extra field powers manual tray bindings.
+    try:
+        await spoolman.ensure_spool_extra_fields()
+    except Exception:
+        logger.exception("Failed to ensure Spoolman spool extra fields")
+
     try:
         machines = await orcaslicer.load_machines()
         loaded = await orcaslicer.load_profiles()
@@ -73,7 +79,7 @@ app = FastAPI(title="bambu-spool-helper", version=__version__, lifespan=lifespan
 
 @app.get("/", include_in_schema=False)
 async def root_redirect() -> RedirectResponse:
-    return RedirectResponse(url="/web/")
+    return RedirectResponse(url="/web/trays")
 
 
 app.include_router(api.router)

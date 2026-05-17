@@ -34,8 +34,8 @@
               <span class="rounded-md border border-slate-700 bg-slate-950 px-2.5 py-1 font-mono text-slate-200">{{ machine_id }}</span>
             </div>
           <nav class="flex flex-wrap gap-2">
-            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'filaments' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/?machine={{ machine_id }}">Filaments</a>
             <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'trays' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/trays?machine={{ machine_id }}">AMS Trays</a>
+            <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'filaments' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/filaments-page?machine={{ machine_id }}">Filaments</a>
             <a class="rounded-md border px-3 py-1.5 text-sm hover:bg-slate-800 {% if active_page == 'settings' %}border-cyan-600 text-cyan-200{% else %}border-slate-700 text-slate-200{% endif %}" href="/web/settings?machine={{ machine_id }}">Settings</a>
           </nav>
           </div>
@@ -45,6 +45,7 @@
       <main class="min-h-0 flex-1">{% block content %}{% endblock %}</main>
     </div>
     <div id="modal"></div>
+    <div id="toasts" class="pointer-events-none fixed top-4 right-4 z-[60] flex flex-col items-end gap-2"></div>
     <script>
       function closeModal() {
         const modal = document.getElementById("modal");
@@ -148,6 +149,41 @@
           target: "#filament-detail",
           swap: "innerHTML"
         });
+      });
+
+      document.body.addEventListener("close-modal", function () {
+        closeModal();
+      });
+
+      document.body.addEventListener("toast", function (event) {
+        const detail = event.detail || {};
+        const level = detail.level === "error" ? "error" : "success";
+        const message = String(detail.message || "");
+        if (!message) return;
+
+        const node = document.createElement("div");
+        const palette = level === "error"
+          ? "border-rose-700/60 bg-rose-900/80 text-rose-50"
+          : "border-emerald-700/60 bg-emerald-900/80 text-emerald-50";
+        node.className =
+          "pointer-events-auto max-w-sm rounded-md border px-4 py-2 text-sm shadow-lg transition-opacity " +
+          palette;
+        node.textContent = message;
+        node.style.opacity = "0";
+
+        const container = document.getElementById("toasts");
+        if (!container) return;
+        container.appendChild(node);
+        requestAnimationFrame(function () { node.style.opacity = "1"; });
+
+        const dismiss = function () {
+          node.style.opacity = "0";
+          setTimeout(function () { node.remove(); }, 200);
+        };
+        node.addEventListener("click", dismiss);
+        if (level === "success") {
+          setTimeout(dismiss, 4000);
+        }
       });
     </script>
   </body>

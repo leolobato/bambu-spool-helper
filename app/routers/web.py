@@ -7,13 +7,15 @@ import logging
 import re
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlencode
 
 import httpx
 from fastapi import APIRouter, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from app.models import VALID_TRAY_TYPES, FilamentProfileResponse, MachineProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
+from app.services.mqtt_printer import is_synthetic_slot_uuid
 
 logger = logging.getLogger(__name__)
 
@@ -781,17 +783,21 @@ def _render_settings_spoolman_result(
     request: Request,
     *,
     validation: dict[str, Any] | None = None,
+    spool_validation: dict[str, Any] | None = None,
     created_keys: list[str] | None = None,
     errors: list[str] | None = None,
     error_message: str = "",
 ) -> HTMLResponse:
+    spoolman = request.app.state.spoolman
     return templates.TemplateResponse(
         request,
         "partials/settings_spoolman_result.html",
         {
             "request": request,
-            "expected_fields": request.app.state.spoolman.REQUIRED_SETTINGS_FILAMENT_FIELDS,
+            "expected_fields": spoolman.REQUIRED_SETTINGS_FILAMENT_FIELDS,
+            "expected_spool_fields": spoolman.REQUIRED_SPOOL_EXTRA_FIELDS,
             "validation": validation,
+            "spool_validation": spool_validation,
             "created_keys": created_keys or [],
             "errors": errors or [],
             "error_message": error_message,
@@ -799,11 +805,10 @@ def _render_settings_spoolman_result(
     )
 
 
-@router.get("/")
-async def index(
+async def _build_filaments_page_context(
     request: Request,
-    machine: str = Query(default=""),
-) -> HTMLResponse:
+    machine: str,
+) -> dict[str, Any]:
     filaments, error = await _load_filaments(request)
     machine_options, machine_id = await _machine_context(request, machine)
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
@@ -829,36 +834,49 @@ async def index(
     } if selected_filament else {}
     profile_field_sync = _build_profile_field_sync(selected_filament, linked_profile) if selected_filament else None
 
-    return templates.TemplateResponse(
-        request,
-        "index.html",
-        {
-            "request": request,
-            "machine_options": machine_options,
-            "machine_id": machine_id,
-            "filaments": filtered_filaments,
-            "error": error,
-            "filter_mode": filter_mode,
-            "search": search,
-            "selected_filament_id": selected_filament.id if selected_filament else None,
-            "filament": selected_filament,
-            "profiles": profiles,
-            "profile_search": "",
-            "selected_setting_id": linked_profile.setting_id if linked_profile else "",
-            "selected_linked_filament_id": (
-                linked_profile.filament_id if linked_profile else (selected_filament.ams_filament_id if selected_filament else "")
-            ),
-            "selected_filament_type": selected_filament_type,
-            "valid_filament_types": sorted(VALID_TRAY_TYPES),
-            "link_filament_type_by_setting_id": link_filament_type_by_setting_id,
-            "linked_profile": linked_profile,
-            "profile_field_sync": profile_field_sync,
-            "success_message": "",
-            "action_error": "",
-            "detail_error": detail_error,
-            "active_page": "filaments",
-        },
-    )
+    return {
+        "request": request,
+        "machine_options": machine_options,
+        "machine_id": machine_id,
+        "filaments": filtered_filaments,
+        "error": error,
+        "filter_mode": filter_mode,
+        "search": search,
+        "selected_filament_id": selected_filament.id if selected_filament else None,
+        "filament": selected_filament,
+        "profiles": profiles,
+        "profile_search": "",
+        "selected_setting_id": linked_profile.setting_id if linked_profile else "",
+        "selected_linked_filament_id": (
+            linked_profile.filament_id if linked_profile else (selected_filament.ams_filament_id if selected_filament else "")
+        ),
+        "selected_filament_type": selected_filament_type,
+        "valid_filament_types": sorted(VALID_TRAY_TYPES),
+        "link_filament_type_by_setting_id": link_filament_type_by_setting_id,
+        "linked_profile": linked_profile,
+        "profile_field_sync": profile_field_sync,
+        "success_message": "",
+        "action_error": "",
+        "detail_error": detail_error,
+        "active_page": "filaments",
+    }
+
+
+@router.get("/")
+async def index(
+    machine: str = Query(default=""),
+) -> RedirectResponse:
+    suffix = f"?{urlencode({'machine': machine})}" if machine else ""
+    return RedirectResponse(url=f"/web/trays{suffix}")
+
+
+@router.get("/filaments-page")
+async def filaments_page(
+    request: Request,
+    machine: str = Query(default=""),
+) -> HTMLResponse:
+    context = await _build_filaments_page_context(request, machine)
+    return templates.TemplateResponse(request, "index.html", context)
 
 
 @router.get("/import-profile")
@@ -939,22 +957,30 @@ async def settings_validate_profiles(
 async def settings_validate_spoolman_fields(
     request: Request,
 ) -> HTMLResponse:
+    spoolman = request.app.state.spoolman
     try:
-        validation = await request.app.state.spoolman.validate_required_filament_fields()
+        validation = await spoolman.validate_required_filament_fields()
+        spool_validation = await spoolman.validate_required_spool_fields()
     except httpx.HTTPError as exc:
         return _render_settings_spoolman_result(
             request,
             error_message=f"Failed to validate Spoolman fields: {exc}",
         )
-    return _render_settings_spoolman_result(request, validation=validation)
+    return _render_settings_spoolman_result(
+        request,
+        validation=validation,
+        spool_validation=spool_validation,
+    )
 
 
 @router.post("/settings/spoolman/ensure")
 async def settings_ensure_spoolman_fields(
     request: Request,
 ) -> HTMLResponse:
+    spoolman = request.app.state.spoolman
     try:
-        result = await request.app.state.spoolman.ensure_required_filament_fields()
+        filament_result = await spoolman.ensure_required_filament_fields()
+        spool_result = await spoolman.ensure_required_spool_fields()
     except httpx.HTTPError as exc:
         return _render_settings_spoolman_result(
             request,
@@ -962,9 +988,10 @@ async def settings_ensure_spoolman_fields(
         )
     return _render_settings_spoolman_result(
         request,
-        validation=result["validation"],
-        created_keys=result["created_keys"],
-        errors=result["errors"],
+        validation=filament_result["validation"],
+        spool_validation=spool_result["validation"],
+        created_keys=filament_result["created_keys"] + spool_result["created_keys"],
+        errors=filament_result["errors"] + spool_result["errors"],
     )
 
 
@@ -1781,14 +1808,117 @@ def _build_mqtt_status(request: Request) -> dict[str, str | int | bool | None]:
     }
 
 
+def _normalize_color_hex(value: str | None) -> str:
+    return (value or "").lstrip("#").lower()[:6]
+
+
+def _build_tray_bindings(
+    trays: list[TrayStatus],
+    spools: list[SpoolmanSpool],
+    *,
+    printer_serial: str,
+) -> dict[int, dict[str, object]]:
+    """For each tray with a binding key, report whether it's already bound
+    to a Spoolman spool, and (when unbound) suggest a single candidate.
+
+    Lookup order for the binding key per tray:
+    1. If the AMS reports a real (non-placeholder) `tray_uuid`, use it.
+    2. Otherwise, when a slot reports the all-zeros placeholder, try a
+       reverse lookup against Spoolman: if exactly one Spoolman spool
+       already has a real RFID `bambu_tray_uuid` AND its filament_id +
+       color match this slot's loaded filament, treat that spool's
+       stored uuid as the binding key for this slot. Bambu's AMS only
+       emits the real RFID UUID intermittently, so we can't rely on the
+       current report alone — but a pre-existing binding plus a matching
+       loaded filament is strong evidence the slot is still that spool.
+    3. Otherwise, fall back to the synthetic `slot:{serial}:{tray_id}`
+       (used for non-RFID spools).
+
+    Suggestion criterion (only when there's no bound spool): exactly one
+    non-archived linked spool with matching filament_id + color and no
+    existing binding elsewhere. Ambiguous matches yield no suggestion.
+    """
+    from app.services.mqtt_printer import (
+        _is_placeholder_tray_uuid,
+        _synthetic_slot_uuid,
+    )
+
+    # Index Spoolman state once.
+    bound_by_uuid: dict[str, SpoolmanSpool] = {}
+    bound_spool_ids: set[int] = set()
+    real_rfid_by_match: dict[tuple[str, str], list[SpoolmanSpool]] = {}
+    for spool in spools:
+        bound = spool.bambu_tray_uuid
+        if not bound:
+            continue
+        bound_by_uuid[bound] = spool
+        bound_spool_ids.add(spool.id)
+        if not bound.startswith("slot:"):
+            # Real RFID UUID (not a synthetic per-slot id). Index for
+            # reverse lookup by (ams_filament_id, color_hex).
+            key = (
+                (spool.filament.ams_filament_id or "").strip().upper(),
+                _normalize_color_hex(spool.filament.color_hex),
+            )
+            real_rfid_by_match.setdefault(key, []).append(spool)
+
+    bindings: dict[int, dict[str, object]] = {}
+    for tray in trays:
+        real_uuid = (tray.tray_uuid or "").strip()
+        has_real_uuid = bool(real_uuid) and not _is_placeholder_tray_uuid(real_uuid)
+        if has_real_uuid:
+            binding_key = real_uuid
+        elif tray.tray_info_idx:
+            match_key = (
+                (tray.tray_info_idx or "").strip().upper(),
+                _normalize_color_hex(tray.tray_color),
+            )
+            reverse_matches = real_rfid_by_match.get(match_key, [])
+            if len(reverse_matches) == 1:
+                # Unambiguous: an existing Spoolman binding with a real
+                # RFID uuid matches this slot's loaded filament+color.
+                binding_key = reverse_matches[0].bambu_tray_uuid
+            else:
+                binding_key = _synthetic_slot_uuid(printer_serial, tray.tray_index)
+        else:
+            continue  # Slot is genuinely empty; nothing to bind.
+
+        bound_spool = bound_by_uuid.get(binding_key)
+
+        suggested_spool: SpoolmanSpool | None = None
+        if bound_spool is None:
+            tray_color = _normalize_color_hex(tray.tray_color)
+            tray_filament_id = (tray.tray_info_idx or "").strip().upper()
+            candidates = [
+                s for s in spools
+                if not s.archived
+                and s.filament.is_linked
+                and s.id not in bound_spool_ids
+                and (s.filament.ams_filament_id or "").strip().upper() == tray_filament_id
+                and _normalize_color_hex(s.filament.color_hex) == tray_color
+            ]
+            if len(candidates) == 1:
+                suggested_spool = candidates[0]
+
+        bindings[tray.tray_index] = {
+            "binding_key": binding_key,
+            "bound_spool": bound_spool,
+            "suggested_spool": suggested_spool,
+        }
+    return bindings
+
+
 async def _build_trays_context(request: Request, requested_machine_id: str = "") -> dict:
     machine_options, machine_id = await _machine_context(request, requested_machine_id)
     request.app.state.mqtt.request_full_status()
     tray_statuses = _build_tray_statuses(request)
     spools, error = await _load_spools(request)
-    linked_spools = [s for s in spools if s.filament.is_linked]
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     tray_profile_matches = _build_tray_profile_matches(tray_statuses, profiles)
+    settings = request.app.state.settings
+    tray_bindings = _build_tray_bindings(
+        tray_statuses, spools, printer_serial=settings.printer_serial,
+    )
 
     return {
         "request": request,
@@ -1796,7 +1926,7 @@ async def _build_trays_context(request: Request, requested_machine_id: str = "")
         "machine_id": machine_id,
         "trays": tray_statuses,
         "tray_profile_matches": tray_profile_matches,
-        "spools": linked_spools,
+        "tray_bindings": tray_bindings,
         "error": error,
         "mqtt_status": _build_mqtt_status(request),
     }
@@ -1807,8 +1937,13 @@ async def trays_page(
     request: Request,
     machine: str = Query(default=""),
 ) -> HTMLResponse:
-    context = await _build_trays_context(request, machine)
-    context["active_page"] = "trays"
+    machine_options, machine_id = await _machine_context(request, machine)
+    context = {
+        "request": request,
+        "machine_options": machine_options,
+        "machine_id": machine_id,
+        "active_page": "trays",
+    }
     return templates.TemplateResponse(request, "trays.html", context)
 
 
@@ -1821,8 +1956,8 @@ async def trays_content(
     return templates.TemplateResponse(request, "partials/trays_content.html", context)
 
 
-@router.get("/tray/{tray_index}")
-async def tray_detail(
+@router.get("/tray/{tray_index}/bind")
+async def tray_bind_modal(
     request: Request,
     tray_index: int,
     machine: str = Query(default=""),
@@ -1839,14 +1974,31 @@ async def tray_detail(
 
     term = search.strip().lower()
     if term:
-        linked_spools = [
-            s for s in linked_spools
-            if term in s.display_name.lower() or term in (s.filament.material or "").lower()
-        ]
+        def _matches(s):
+            vendor_name = s.filament.vendor.name if s.filament.vendor else ""
+            return (
+                term in s.display_name.lower()
+                or term in (s.filament.material or "").lower()
+                or term in (vendor_name or "").lower()
+                or term in (s.filament.color_hex or "").lower()
+                or term in (s.filament.ams_filament_id or "").lower()
+            )
+        linked_spools = [s for s in linked_spools if _matches(s)]
+
+    bindings = _build_tray_bindings(
+        tray_statuses, spools,
+        printer_serial=request.app.state.settings.printer_serial,
+    )
+    binding = bindings.get(tray_index)
+
+    # Move the suggested spool to the top of the list if it's present.
+    if binding and binding.get("suggested_spool"):
+        suggested_id = binding["suggested_spool"].id
+        linked_spools.sort(key=lambda s: 0 if s.id == suggested_id else 1)
 
     return templates.TemplateResponse(
         request,
-        "partials/tray_detail.html",
+        "partials/tray_bind_modal.html",
         {
             "request": request,
             "tray": tray,
@@ -1854,7 +2006,40 @@ async def tray_detail(
             "spools": linked_spools,
             "search": search,
             "error": error,
+            "binding": binding,
         },
+    )
+
+
+async def _render_tray_card_error(
+    request: Request,
+    *,
+    tray_index: int,
+    machine: str,
+    error_message: str,
+) -> HTMLResponse:
+    """Re-render the tray card and emit a toast describing the failure."""
+    _, machine_id = await _machine_context(request, machine)
+    tray_statuses = _build_tray_statuses(request)
+    tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
+    if tray is None:
+        raise HTTPException(status_code=404, detail="Tray not found")
+    spools_fresh, _ = await _load_spools(request)
+    bindings = _build_tray_bindings(
+        tray_statuses, spools_fresh,
+        printer_serial=request.app.state.settings.printer_serial,
+    )
+    return templates.TemplateResponse(
+        request,
+        "partials/tray_card.html",
+        {
+            "request": request,
+            "machine_id": machine_id,
+            "tray": tray,
+            "matched_profile": None,
+            "binding": bindings.get(tray_index),
+        },
+        headers={"HX-Trigger": json.dumps({"toast": {"level": "error", "message": error_message}})},
     )
 
 
@@ -1868,14 +2053,23 @@ async def assign_spool_to_tray(
     spools, _ = await _load_spools(request)
     spool = next((s for s in spools if s.id == spool_id), None)
     if spool is None:
-        raise HTTPException(status_code=400, detail="Spool not found")
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message="Spool not found.",
+        )
 
     filament = spool.filament
     if not filament.is_linked:
-        raise HTTPException(status_code=400, detail="Spool filament is not linked to a profile")
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message="Spool filament is not linked to a profile.",
+        )
     linked_filament_id = (filament.ams_filament_id or "").strip()
     if not linked_filament_id:
-        raise HTTPException(status_code=400, detail="Spool filament missing ams_filament_id")
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message="Spool filament is missing ams_filament_id.",
+        )
 
     tray_statuses = _build_tray_statuses(request)
     tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
@@ -1886,18 +2080,51 @@ async def assign_spool_to_tray(
     profiles = await request.app.state.orcaslicer.get_profiles(machine_id)
     profile = _find_linked_profile(profiles, filament)
     if not profile:
-        raise HTTPException(
-            status_code=400,
-            detail=f"OrcaSlicer profile not found for filament_id={linked_filament_id}",
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message=(
+                f"No OrcaSlicer profile found for filament_id={linked_filament_id}. "
+                "Import the profile in OrcaSlicer or update the Spoolman filament's "
+                "ams_filament_id to a known profile."
+            ),
         )
     ams_payload_filament_id = (profile.filament_id or "").strip()
     if not ams_payload_filament_id:
-        raise HTTPException(status_code=400, detail="Linked profile missing filament_id")
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message="Linked OrcaSlicer profile is missing filament_id.",
+        )
 
     mqtt = request.app.state.mqtt
     activation_filament_type = _resolve_link_filament_type(profile, filament)
     if not activation_filament_type:
-        raise HTTPException(status_code=400, detail="Linked profile missing filament_type")
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message="Linked OrcaSlicer profile is missing filament_type.",
+        )
+
+    mqtt.request_full_status()
+    tray_uuid = mqtt.get_tray_uuid(tray_index)
+    if tray_uuid is None:
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message=(
+                f"Tray {tray_index + 1} has no UUID yet (AMS hasn't reported this slot "
+                "or no spool is loaded). Insert a Bambu RFID spool and let the AMS "
+                "scan it, then try again."
+            ),
+        )
+    try:
+        await request.app.state.spoolman.bind_spool_to_tray_uuid(
+            spool_id=spool_id, tray_uuid=tray_uuid,
+        )
+    except Exception as exc:
+        logger.exception("bind_spool_to_tray_uuid failed for spool=%s tray=%s", spool_id, tray_index)
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message=f"Failed to bind spool to tray UUID in Spoolman: {exc}",
+        )
+
     success, message = mqtt.activate_filament(
         tray=tray_index,
         tray_info_idx=ams_payload_filament_id,
@@ -1917,15 +2144,29 @@ async def assign_spool_to_tray(
     )
 
     if not success:
-        raise HTTPException(status_code=502, detail=f"Failed to activate: {message}")
+        return await _render_tray_card_error(
+            request, tray_index=tray_index, machine=machine,
+            error_message=f"Failed to activate filament on printer: {message}",
+        )
 
     tray_statuses = _build_tray_statuses(request)
-    spools_fresh, error = await _load_spools(request)
-    linked_spools = [s for s in spools_fresh if s.filament.is_linked]
+    spools_fresh, _ = await _load_spools(request)
     tray = next((t for t in tray_statuses if t.tray_index == tray_index), None)
     if tray is None:
         raise HTTPException(status_code=404, detail="Tray not found")
     tray = _apply_assignment_to_tray_view(tray, spool, profile, activation_filament_type)
+
+    success_message = f"Assigned {spool.display_name} to {tray.label}."
+    if is_synthetic_slot_uuid(tray_uuid):
+        success_message += (
+            " Tracked by slot (no RFID on this spool) — re-assign if you "
+            "physically move the spool to a different tray."
+        )
+
+    bindings = _build_tray_bindings(
+        tray_statuses, spools_fresh,
+        printer_serial=request.app.state.settings.printer_serial,
+    )
 
     return templates.TemplateResponse(
         request,
@@ -1935,9 +2176,9 @@ async def assign_spool_to_tray(
             "machine_id": machine_id,
             "tray": tray,
             "matched_profile": profile,
-            "spools": linked_spools,
-            "assign_success": f"Assigned {spool.display_name} to {tray.label}",
+            "binding": bindings.get(tray_index),
         },
+        headers={"HX-Trigger": json.dumps({"toast": {"level": "success", "message": success_message}, "close-modal": True})},
     )
 
 

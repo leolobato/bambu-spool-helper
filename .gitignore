@@ -11,3 +11,4 @@ build/
 .claude/
 .pytest_cache/
 .worktrees/
+.superpowers/

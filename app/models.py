@@ -94,6 +94,7 @@ class ActivateRequest(BaseModel):
     nozzle_temp_max: int = 0
     bed_temp: int = 0
     setting_id: str = ""
+    spool_id: int | None = None
 
     @field_validator("filament_type")
     @classmethod
@@ -223,6 +224,7 @@ class SpoolmanSpool(BaseModel):
     remaining_weight: float | None = None
     remaining_length: float | None = None
     archived: bool = False
+    extra: dict[str, str] = Field(default_factory=dict)
 
     @property
     def display_name(self) -> str:
@@ -231,3 +233,22 @@ class SpoolmanSpool(BaseModel):
     @property
     def color_css(self) -> str:
         return self.filament.color_css
+
+    @property
+    def bambu_tray_uuid(self) -> str | None:
+        """Decoded `bambu_tray_uuid` extra; None when empty/unset.
+
+        Spoolman stores extra values JSON-encoded, so the raw form is
+        e.g. `'"abc-123"'`. We strip the JSON quotes and return None for
+        the cleared-binding placeholder (empty string after decode).
+        """
+        raw = self.extra.get("bambu_tray_uuid", "")
+        if not raw:
+            return None
+        try:
+            decoded = json.loads(raw)
+        except json.JSONDecodeError:
+            return raw or None
+        if not isinstance(decoded, str) or not decoded:
+            return None
+        return decoded

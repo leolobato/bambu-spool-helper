@@ -1,8 +1,70 @@
+{% macro render_validation_block(label, validation) %}
+  <div class="rounded-md border {% if validation.is_valid %}border-emerald-700/60 bg-emerald-900/20{% else %}border-amber-700/60 bg-amber-900/20{% endif %} p-3">
+    <div class="text-sm {% if validation.is_valid %}text-emerald-100{% else %}text-amber-100{% endif %}">
+      {% if validation.is_valid %}
+        Spoolman {{ label }} custom fields are valid.
+      {% else %}
+        Spoolman {{ label }} custom fields are not valid yet.
+      {% endif %}
+    </div>
+
+    <div class="mt-3 space-y-2">
+      {% for entry in validation.valid %}
+        <div class="rounded-md border border-emerald-700/40 bg-emerald-900/10 p-2 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-emerald-200">{{ entry.expected.key }}</span>
+            <span class="text-emerald-300">✓ valid</span>
+          </div>
+          <div class="mt-1 text-slate-300">
+            {{ entry.expected.name }} — {{ entry.expected.field_type }}{% if entry.expected.unit %} — {{ entry.expected.unit }}{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+      {% for field in validation.missing %}
+        <div class="rounded-md border border-amber-700/40 bg-amber-900/10 p-2 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-amber-200">{{ field.key }}</span>
+            <span class="text-amber-300">⚠ missing</span>
+          </div>
+          <div class="mt-1 text-slate-300">
+            {{ field.name }} — {{ field.field_type }}{% if field.unit %} — {{ field.unit }}{% endif %}
+          </div>
+        </div>
+      {% endfor %}
+
+      {% for entry in validation.invalid %}
+        <div class="rounded-md border border-rose-700/40 bg-rose-900/10 p-2 text-xs">
+          <div class="flex items-center justify-between gap-2">
+            <span class="font-mono text-rose-200">{{ entry.expected.key }}</span>
+            <span class="text-rose-300">✗ mismatch</span>
+          </div>
+          <div class="mt-1 text-slate-300">
+            Expected: {{ entry.expected.name }} — {{ entry.expected.field_type }}{% if entry.expected.unit %} — {{ entry.expected.unit }}{% endif %}
+          </div>
+          <div class="text-slate-400">
+            Actual: {{ entry.actual.name or "-" }} — {{ entry.actual.field_type or "-" }}{% if entry.actual.unit is defined and entry.actual.unit %} — {{ entry.actual.unit }}{% endif %}
+          </div>
+          {% for mismatch in entry.mismatches %}
+            <div class="mt-1 text-slate-400">{{ mismatch }}</div>
+          {% endfor %}
+        </div>
+      {% endfor %}
+    </div>
+
+    <div class="mt-3 text-xs text-slate-400">
+      {{ validation.required_count }} required — {{ validation.valid_count }} valid, {{ validation.missing_count }} missing, {{ validation.invalid_count }} invalid.
+    </div>
+  </div>
+{% endmacro %}
+
 {% if error_message %}
   <div class="rounded-md border border-rose-700/60 bg-rose-900/30 p-3 text-sm text-rose-100">
     {{ error_message }}
   </div>
 {% elif validation %}
+  {% set has_filament_gap = not validation.is_valid %}
+  {% set has_spool_gap = spool_validation is defined and spool_validation and not spool_validation.is_valid %}
   <div class="space-y-3">
     {% if created_keys %}
       <div class="rounded-md border border-emerald-700/60 bg-emerald-900/20 p-3 text-sm text-emerald-100">
@@ -18,76 +80,51 @@
       </div>
     {% endif %}
 
-    <div class="rounded-md border {% if validation.is_valid %}border-emerald-700/60 bg-emerald-900/20{% else %}border-amber-700/60 bg-amber-900/20{% endif %} p-3">
-      <div class="text-sm {% if validation.is_valid %}text-emerald-100{% else %}text-amber-100{% endif %}">
-        {% if validation.is_valid %}
-          Spoolman filament custom fields are valid.
-        {% else %}
-          Spoolman filament custom fields are not valid yet.
-        {% endif %}
-      </div>
-      <div class="mt-2 grid gap-2 text-xs text-slate-200 sm:grid-cols-3">
-        <div class="rounded-md border border-slate-700/70 bg-slate-950/30 p-2">
-          <div class="text-slate-400">Required</div>
-          <div class="mt-1 text-sm font-semibold">{{ validation.required_count }}</div>
-        </div>
-        <div class="rounded-md border border-slate-700/70 bg-slate-950/30 p-2">
-          <div class="text-slate-400">Valid</div>
-          <div class="mt-1 text-sm font-semibold">{{ validation.valid_count }}</div>
-        </div>
-        <div class="rounded-md border border-slate-700/70 bg-slate-950/30 p-2">
-          <div class="text-slate-400">Missing / Invalid</div>
-          <div class="mt-1 text-sm font-semibold">{{ validation.missing_count + validation.invalid_count }}</div>
-        </div>
-      </div>
-
-      {% if validation.missing %}
-        <div class="mt-3">
-          <div class="text-xs uppercase tracking-wide text-slate-400">Missing</div>
-          <div class="mt-2 space-y-2">
-            {% for field in validation.missing %}
-              <div class="rounded-md border border-amber-700/40 bg-slate-950/30 p-2 text-xs text-slate-200">
-                <span class="font-mono">{{ field.key }}</span> — {{ field.name }} — {{ field.field_type }}{% if field.unit %} — {{ field.unit }}{% endif %}
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      {% endif %}
-
-      {% if validation.invalid %}
-        <div class="mt-3">
-          <div class="text-xs uppercase tracking-wide text-slate-400">Invalid</div>
-          <div class="mt-2 space-y-2">
-            {% for field in validation.invalid %}
-              <div class="rounded-md border border-amber-700/40 bg-slate-950/30 p-2 text-xs text-slate-200">
-                <div><span class="font-mono">{{ field.expected.key }}</span> has mismatched settings.</div>
-                <div class="mt-1 text-slate-400">Expected: {{ field.expected.name }} — {{ field.expected.field_type }}{% if field.expected.unit %} — {{ field.expected.unit }}{% endif %}</div>
-                <div class="mt-1 text-slate-400">Actual: {{ field.actual.name or "-" }} — {{ field.actual.field_type or "-" }}{% if field.actual.unit is defined and field.actual.unit %} — {{ field.actual.unit }}{% endif %}</div>
-                {% for mismatch in field.mismatches %}
-                  <div class="mt-1">{{ mismatch }}</div>
-                {% endfor %}
-              </div>
-            {% endfor %}
-          </div>
-        </div>
-      {% endif %}
+    <div>
+      <div class="mb-1 text-xs uppercase tracking-wide text-slate-400">Filament fields</div>
+      {{ render_validation_block("filament", validation) }}
     </div>
 
-    {% if not validation.is_valid %}
+    {% if spool_validation %}
+      <div>
+        <div class="mb-1 text-xs uppercase tracking-wide text-slate-400">Spool fields</div>
+        {{ render_validation_block("spool", spool_validation) }}
+      </div>
+    {% endif %}
+
+    {% if has_filament_gap or has_spool_gap %}
       <div class="rounded-md border border-slate-700 bg-slate-950/30 p-3">
-        <div class="text-sm text-slate-200">Required filament custom fields</div>
-        <div class="mt-2 space-y-2 text-xs text-slate-300">
-          {% for field in expected_fields %}
-            <div class="rounded-md border border-slate-700/70 p-2">
-              <div><span class="text-slate-400">Key:</span> <span class="font-mono">{{ field.key }}</span></div>
-              <div class="mt-1"><span class="text-slate-400">Name:</span> {{ field.name }}</div>
-              <div class="mt-1"><span class="text-slate-400">Type:</span> {{ field.field_type }}</div>
-              {% if field.unit %}
-                <div class="mt-1"><span class="text-slate-400">Unit:</span> {{ field.unit }}</div>
-              {% endif %}
-            </div>
-          {% endfor %}
-        </div>
+        <div class="text-sm text-slate-200">Required custom fields reference</div>
+        {% if has_filament_gap and expected_fields %}
+          <div class="mt-2 text-xs uppercase tracking-wide text-slate-400">Filament</div>
+          <div class="mt-1 space-y-2 text-xs text-slate-300">
+            {% for field in expected_fields %}
+              <div class="rounded-md border border-slate-700/70 p-2">
+                <div><span class="text-slate-400">Key:</span> <span class="font-mono">{{ field.key }}</span></div>
+                <div class="mt-1"><span class="text-slate-400">Name:</span> {{ field.name }}</div>
+                <div class="mt-1"><span class="text-slate-400">Type:</span> {{ field.field_type }}</div>
+                {% if field.unit %}
+                  <div class="mt-1"><span class="text-slate-400">Unit:</span> {{ field.unit }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
+        {% if has_spool_gap and expected_spool_fields %}
+          <div class="mt-3 text-xs uppercase tracking-wide text-slate-400">Spool</div>
+          <div class="mt-1 space-y-2 text-xs text-slate-300">
+            {% for field in expected_spool_fields %}
+              <div class="rounded-md border border-slate-700/70 p-2">
+                <div><span class="text-slate-400">Key:</span> <span class="font-mono">{{ field.key }}</span></div>
+                <div class="mt-1"><span class="text-slate-400">Name:</span> {{ field.name }}</div>
+                <div class="mt-1"><span class="text-slate-400">Type:</span> {{ field.field_type }}</div>
+                {% if field.unit %}
+                  <div class="mt-1"><span class="text-slate-400">Unit:</span> {{ field.unit }}</div>
+                {% endif %}
+              </div>
+            {% endfor %}
+          </div>
+        {% endif %}
       </div>
 
       <div>
@@ -104,6 +141,6 @@
   </div>
 {% else %}
   <div class="rounded-md border border-dashed border-slate-700 p-3 text-sm text-slate-400">
-    Validate Spoolman to confirm the required filament fields exist with the expected type and unit.
+    Validate Spoolman to confirm the required filament and spool custom fields exist with the expected type and unit.
   </div>
 {% endif %}

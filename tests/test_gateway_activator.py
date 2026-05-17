@@ -192,6 +192,102 @@ class TestStatus(unittest.TestCase):
         self.assertFalse(s["connected"])
         self.assertEqual(s["tray_count"], 0)
 
+    def test_request_full_status_uses_gateway_printer_online_state(self):
+        a = _activator()
+        a._client.get.return_value = _resp(
+            200,
+            {
+                "printers": [
+                    {
+                        "id": "P01",
+                        "online": False,
+                        "state": "offline",
+                    }
+                ]
+            },
+        )
+
+        a.request_full_status()
+
+        s = a.get_connection_status()
+        self.assertTrue(s["configured"])
+        self.assertFalse(s["connected"])
+        self.assertEqual(s["tray_count"], 0)
+        self.assertIn("offline", s["last_error"].lower())
+        a._client.get.assert_called_once_with("http://gateway:8080/api/printers")
+
+
+class TestGetTrayUuids(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_tray_id_to_uuid_dict(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        fake_trays = {
+            0: type("T", (), {"tray_uuid": "uuid-0"})(),
+            1: type("T", (), {"tray_uuid": "uuid-1"})(),
+            255: type("T", (), {"tray_uuid": "uuid-ext"})(),
+        }
+        with patch.object(a, "get_tray_data", return_value=fake_trays):
+            result = await a.get_tray_uuids()
+        self.assertEqual(result, {0: "uuid-0", 1: "uuid-1", 255: "uuid-ext"})
+
+
+class TestGetTrayUuidGateway(unittest.TestCase):
+    def test_returns_uuid_for_known_tray(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        a._trays = {0: type("T", (), {"tray_uuid": "uuid-0"})()}
+        self.assertEqual(a.get_tray_uuid(0), "uuid-0")
+
+    def test_returns_none_for_unknown_tray(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        a._trays = {}
+        self.assertIsNone(a.get_tray_uuid(99))
+
+    def test_returns_none_when_uuid_empty(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        a._trays = {0: type("T", (), {"tray_uuid": ""})()}
+        self.assertIsNone(a.get_tray_uuid(0))
+
+    def test_returns_none_for_all_zeros_placeholder_when_slot_empty(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        a._trays = {0: type("T", (), {"tray_uuid": "00000000000000000000000000000000", "tray_info_idx": ""})()}
+        self.assertIsNone(a.get_tray_uuid(0))
+
+    def test_returns_synthetic_when_placeholder_but_filament_loaded(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        a._trays = {0: type("T", (), {"tray_uuid": "00000000000000000000000000000000", "tray_info_idx": "Pfd5d97d"})()}
+        self.assertEqual(a.get_tray_uuid(0), "slot:P01:0")
+
+
+class TestGetTrayUuidsFiltersPlaceholders(unittest.IsolatedAsyncioTestCase):
+    async def test_get_tray_uuids_skips_placeholder(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        fake_trays = {
+            0: type("T", (), {"tray_uuid": "real-uuid"})(),
+            1: type("T", (), {"tray_uuid": "00000000000000000000000000000000"})(),
+            2: type("T", (), {"tray_uuid": ""})(),
+        }
+        with patch.object(a, "get_tray_data", return_value=fake_trays):
+            result = await a.get_tray_uuids()
+        self.assertEqual(result, {0: "real-uuid"})
+
+    async def test_get_tray_uuids_returns_synthetic_for_loaded_non_rfid_slot(self):
+        a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
+        fake_trays = {
+            0: type("T", (), {"tray_uuid": "real-uuid", "tray_info_idx": "GFA00"})(),
+            1: type("T", (), {"tray_uuid": "00000000000000000000000000000000", "tray_info_idx": "GFA01"})(),
+            2: type("T", (), {"tray_uuid": "", "tray_info_idx": "GFA02"})(),
+            3: type("T", (), {"tray_uuid": "00000000000000000000000000000000", "tray_info_idx": ""})(),
+        }
+        with patch.object(a, "get_tray_data", return_value=fake_trays):
+            result = await a.get_tray_uuids()
+        self.assertEqual(
+            result,
+            {
+                0: "real-uuid",
+                1: "slot:P01:1",
+                2: "slot:P01:2",
+            },
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
