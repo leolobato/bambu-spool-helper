@@ -41,17 +41,17 @@
     {% elif tray.tray_info_idx %}
       <span class="inline-flex w-fit items-center gap-1 rounded-md border border-amber-800/60 bg-amber-900/30 px-1.5 py-0.5 text-[10px] font-medium text-amber-200">No profile match</span>
     {% endif %}
-
-    <div class="mt-auto">
-      <button
-        type="button"
-        hx-get="/web/tray/{{ tray.tray_index }}/bind?machine={{ machine_id }}"
-        hx-target="#modal"
-        hx-swap="innerHTML"
-        class="w-full rounded-md border px-3 py-1.5 text-sm transition {% if is_bound %}border-slate-700 text-slate-200 hover:bg-slate-800{% else %}border-cyan-700 bg-cyan-900/30 text-cyan-100 hover:bg-cyan-900/60{% endif %}"
-      >
-        {% if is_bound %}Change spool{% else %}Bind spool…{% endif %}
-      </button>
-    </div>
   {% endif %}
+
+  <div class="mt-auto">
+    <button
+      type="button"
+      hx-get="/web/tray/{{ tray.tray_index }}/bind?machine={{ machine_id }}"
+      hx-target="#modal"
+      hx-swap="innerHTML"
+      class="w-full rounded-md border px-3 py-1.5 text-sm transition {% if is_bound %}border-slate-700 text-slate-200 hover:bg-slate-800{% else %}border-cyan-700 bg-cyan-900/30 text-cyan-100 hover:bg-cyan-900/60{% endif %}"
+    >
+      {% if is_bound %}Change spool{% else %}Bind spool…{% endif %}
+    </button>
+  </div>
 </div>

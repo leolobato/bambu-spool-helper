@@ -87,12 +87,61 @@ def _mock_tray(tray_index: int = 0) -> TrayStatus:
 # rather than constructing the full chain.
 
 class TestWebAssignBind(unittest.TestCase):
-    def test_missing_tray_uuid_emits_error_toast_header(self):
-        """User-facing assign failures stay HTTP 200 for HTMX swaps, but the
-        message is delivered through HX-Trigger instead of an inline card banner.
-        Error responses must not close the modal.
+    def test_empty_slot_binds_with_synthetic_uuid_and_renders_bound(self):
+        """When the AMS reports the slot as empty (no RFID, no configured
+        filament), the user can still bind a Spoolman spool — the assignment
+        falls back to the synthetic `slot:{serial}:{index}` id so the bind
+        and the subsequent MQTT `ams_filament_setting` push proceed.
+
+        The card returned by the assign endpoint must reflect the new binding
+        immediately. The AMS often doesn't re-report the slot until its next
+        push, so the post-assign render has to splice the just-applied tray
+        view into the binding lookup; otherwise the card flashes "Not bound /
+        Bind spool…" right after a successful bind.
+        """
+        spool = _mock_spool()
+        # Simulate Spoolman storing the binding: the post-assign re-fetch
+        # surfaces the spool now carrying the synthetic uuid.
+        spool_after = _mock_spool()
+        spool_after.bambu_tray_uuid = "slot:TESTSERIAL:0"
+
+        profile = _mock_profile()
+        mqtt, spoolman = _setup_state(
+            mqtt_tray_uuid=None,
+            found_spool=spool,
+            found_profile=profile,
+        )
+        spoolman.get_spools = AsyncMock(side_effect=[[spool], [spool_after]])
+
+        # Note: _build_tray_bindings is intentionally NOT mocked here — the
+        # bug being guarded against lives inside it (empty trays are skipped),
+        # so the splice fix is only verifiable through the real builder.
+        with patch("app.routers.web._build_tray_statuses", return_value=[_mock_tray(0)]), \
+             patch("app.routers.web._machine_context", new=AsyncMock(return_value=("", None))), \
+             patch("app.routers.web._find_linked_profile", return_value=profile), \
+             patch("app.routers.web._resolve_link_filament_type", return_value="PLA"):
+            client = TestClient(app)
+            resp = client.post("/web/tray/0/assign", data={"machine": "", "spool_id": "42"})
+
+        self.assertEqual(resp.status_code, 200)
+        trigger = json.loads(resp.headers["HX-Trigger"])
+        self.assertEqual(trigger["toast"]["level"], "success")
+        self.assertTrue(trigger["close-modal"])
+        spoolman.bind_spool_to_tray_uuid.assert_awaited_once_with(
+            spool_id=42, tray_uuid="slot:TESTSERIAL:0",
+        )
+        mqtt.activate_filament.assert_called_once()
+        # Rendered card must show the bound state, not the unbound flash.
+        self.assertNotIn("Not bound to a Spoolman spool.", resp.text)
+        self.assertIn("Change spool", resp.text)
+        self.assertIn("#42", resp.text)
+
+    def test_empty_slot_without_printer_serial_errors(self):
+        """If the printer isn't configured we can't make a stable synthetic
+        slot id, so binding an empty slot must fail with a clear error.
         """
         mqtt, spoolman = _setup_state(mqtt_tray_uuid=None)
+        app.state.settings.printer_serial = ""
         with patch("app.routers.web._load_spools", new=AsyncMock(return_value=([_mock_spool()], None))), \
              patch("app.routers.web._build_tray_statuses", return_value=[_mock_tray(0)]), \
              patch("app.routers.web._machine_context", new=AsyncMock(return_value=("", None))), \
@@ -105,9 +154,8 @@ class TestWebAssignBind(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         trigger = json.loads(resp.headers["HX-Trigger"])
         self.assertEqual(trigger["toast"]["level"], "error")
-        self.assertIn("no UUID yet", trigger["toast"]["message"])
+        self.assertIn("PRINTER_SERIAL", trigger["toast"]["message"])
         self.assertNotIn("close-modal", trigger)
-        self.assertNotIn("assign_error", resp.text)
         spoolman.bind_spool_to_tray_uuid.assert_not_awaited()
         mqtt.activate_filament.assert_not_called()
 

@@ -27,14 +27,20 @@ class TestTrayCardRendering(unittest.TestCase):
             machine_id="TESTSERIAL",
         )
 
-    def test_empty_state_hides_binding_action_and_profile_badge(self):
+    def test_empty_state_offers_bind_action_without_profile_badge(self):
+        """Empty slots still expose a Bind action — the user may have loaded a
+        non-RFID spool that the AMS can't auto-detect, and binding lets the
+        helper push the filament profile to the AMS. Profile-match badges
+        require AMS-reported filament info, so they stay hidden."""
         html = self._render(tray=TrayStatus(tray_index=0))
 
         self.assertIn("Empty", html)
-        self.assertNotIn("Bind spool", html)
+        self.assertIn("Bind spool", html)
+        self.assertIn("/web/tray/0/bind", html)
         self.assertNotIn("Change spool", html)
         self.assertNotIn("Profile matched", html)
         self.assertNotIn("No profile match", html)
+        self.assertNotIn("Not bound to a Spoolman spool.", html)
 
     def test_unbound_state_shows_bind_action_and_profile_badge(self):
         tray = TrayStatus(

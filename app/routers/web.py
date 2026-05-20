@@ -2106,14 +2106,21 @@ async def assign_spool_to_tray(
     mqtt.request_full_status()
     tray_uuid = mqtt.get_tray_uuid(tray_index)
     if tray_uuid is None:
-        return await _render_tray_card_error(
-            request, tray_index=tray_index, machine=machine,
-            error_message=(
-                f"Tray {tray_index + 1} has no UUID yet (AMS hasn't reported this slot "
-                "or no spool is loaded). Insert a Bambu RFID spool and let the AMS "
-                "scan it, then try again."
-            ),
-        )
+        # AMS hasn't reported the slot, or reports it as empty (no RFID and no
+        # filament configured on the printer). The user is explicitly claiming
+        # this slot for a non-RFID spool — fall back to the synthetic per-slot
+        # id so the bind proceeds. The `activate_filament` call below pushes
+        # the profile to the AMS, teaching the printer what's now loaded.
+        from app.services.mqtt_printer import _synthetic_slot_uuid
+        printer_serial = request.app.state.settings.printer_serial
+        if not printer_serial:
+            return await _render_tray_card_error(
+                request, tray_index=tray_index, machine=machine,
+                error_message=(
+                    "Printer is not configured. Set PRINTER_SERIAL before binding spools."
+                ),
+            )
+        tray_uuid = _synthetic_slot_uuid(printer_serial, tray_index)
     try:
         await request.app.state.spoolman.bind_spool_to_tray_uuid(
             spool_id=spool_id, tray_uuid=tray_uuid,
@@ -2155,6 +2162,13 @@ async def assign_spool_to_tray(
     if tray is None:
         raise HTTPException(status_code=404, detail="Tray not found")
     tray = _apply_assignment_to_tray_view(tray, spool, profile, activation_filament_type)
+    # Splice the post-assignment view back into the list so the binding
+    # builder sees the just-set `tray_info_idx`. Without this, an AMS slot
+    # that the printer still reports as empty (common right after assigning
+    # a non-RFID spool, before the next AMS report) would be skipped by
+    # `_build_tray_bindings`, and the rendered card would say "Not bound"
+    # for a slot we literally just bound.
+    tray_statuses = [tray if t.tray_index == tray_index else t for t in tray_statuses]
 
     success_message = f"Assigned {spool.display_name} to {tray.label}."
     if is_synthetic_slot_uuid(tray_uuid):
