@@ -8,7 +8,15 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
-from app.models import VALID_TRAY_TYPES, ActivationRecord, ActivateRequest, ActivateResponse, FilamentProfileResponse, StatusResponse
+from app.models import (
+    VALID_TRAY_TYPES,
+    ActivationRecord,
+    ActivateRequest,
+    ActivateResponse,
+    FilamentProfileResponse,
+    PrintTrackingSettingsRequest,
+    StatusResponse,
+)
 
 router = APIRouter(tags=["API"])
 
@@ -26,7 +34,26 @@ async def get_status(request: Request) -> StatusResponse:
     return StatusResponse(
         port=settings.port,
         profiles_loaded=profile_count,
+        print_tracking=(
+            request.app.state.print_tracking.status
+            if hasattr(request.app.state, "print_tracking")
+            else {
+                "available": False,
+                "enabled": False,
+                "connected": False,
+                "active": False,
+            }
+        ),
     )
+
+
+@router.put("/api/print-tracking/settings")
+async def update_print_tracking_settings(
+    request: Request, payload: PrintTrackingSettingsRequest,
+) -> dict[str, Any]:
+    service = request.app.state.print_tracking
+    await service.set_enabled(payload.enabled)
+    return service.status
 
 
 @router.get("/valid-tray-types")

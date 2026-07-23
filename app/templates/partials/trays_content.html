@@ -58,6 +58,10 @@
   </div>
 </div>
 
+<div class="mb-4">
+  {% include "partials/print_tracking_control.html" %}
+</div>
+
 <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
   {% for tray in trays %}
     <div id="tray-card-{{ tray.tray_index }}">

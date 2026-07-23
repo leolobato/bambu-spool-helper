@@ -391,6 +391,16 @@ class MQTTPrinterClient:
         with self._lock:
             return dict(self._trays)
 
+    async def get_tray_uuids(self) -> dict[int, str]:
+        """Snapshot helper tray -> physical/synthetic binding identifiers."""
+        with self._lock:
+            tray_ids = list(self._trays)
+        return {
+            tray_id: uuid
+            for tray_id in tray_ids
+            if (uuid := self.get_tray_uuid(tray_id)) is not None
+        }
+
     def get_connection_status(self) -> dict[str, object]:
         with self._lock:
             return {

@@ -25,7 +25,8 @@ Raspberry Pi alongside Spoolman.
 - **Create profiles from filament JSON** — paste an exported Bambu/OrcaSlicer filament JSON and the UI builds an AMS-assignable profile, prompting for missing fields (e.g. textured-plate temperature)
 - **Smart matching** — exact `(setting_id, filament_id)` first, falling back to filament ID, then scoring by material, type, and source priority (user > system)
 - **Graceful degradation** — runs fine without printer credentials; only the activation step is skipped
-- **Stateless** — all linkage data lives in Spoolman as `bambu_*` extra fields, so nothing is locked to this app
+- **Completed-layer usage tracking** — reads the active 3MF through bambu-gateway and updates each bound Spoolman spool in near real time without charging a cancelled layer
+- **Portable linkage data** — all spool/profile and tray linkage data lives in Spoolman as `bambu_*` extra fields; only the tracking toggle and small crash-recovery ledger are local
 
 ## How It Works
 
@@ -56,6 +57,9 @@ docker run -d --name bambu-spool-helper \
   -e PRINTER_IP=192.168.1.100 \
   -e PRINTER_ACCESS_CODE=your_access_code \
   -e PRINTER_SERIAL=your_serial_number \
+  -e BAMBU_GATEWAY_URL=http://10.0.1.9:4844 \
+  -e PRINT_TRACKING_DIR=/data/print_tracking \
+  -v bambu-spool-helper-data:/data \
   ghcr.io/leolobato/bambu-spool-helper:latest
 ```
 
@@ -105,10 +109,27 @@ All configuration is via environment variables (loaded from `.env` if present).
 | `DEFAULT_MACHINE_PROFILE_ID` | `GM020` | Machine profile used to filter AMS-assignable filaments (`GM020` = A1 mini). Also accepts the legacy name `DEFAULT_MACHINE_SETTING_ID`. |
 | `PORT` | `9817` | HTTP server port |
 | `DETAIL_FETCH_CONCURRENCY` | `10` | Max concurrent profile-detail requests against orcaslicer-headless |
+| `BAMBU_GATEWAY_URL` | _(empty)_ | bambu-gateway base URL. Required for print tracking and optional for routing AMS commands. |
+| `PRINT_TRACKING_DIR` | `data/print_tracking` | Persistent settings/checkpoint directory. Docker Compose sets this to `/data/print_tracking`. |
 
 Printer variables are optional. Without them the service runs as a read-only
 inventory linker — useful for prepping spool data ahead of time, or for running
 on a host that can't reach the printer.
+
+Filament usage tracking is off until enabled in the AMS tray status UI. It
+persists the toggle, active 3MF, completed-layer checkpoint, route snapshot,
+per-spool totals, and pending deliveries under `PRINT_TRACKING_DIR`. Spoolman
+remains authoritative for inventory and all linkage data. The helper submits
+`use_length` to Spoolman's official spool-use API; Spoolman derives consumed
+weight from the filament diameter and density already stored in its inventory.
+See [Filament Usage Tracking](docs/filament-usage-tracking.md) for the complete
+behavior, recovery, API, and troubleshooting guide.
+
+All jobs visible to bambu-gateway's printer stream are detectable, whether
+started through the gateway or elsewhere. Gateway-submitted jobs retain a
+local source. For externally started jobs the gateway tries the reported
+HTTP(S) source and then printer FTPS. An external cloud job whose 3MF cannot
+be retrieved is shown as unsupported; usage is never estimated.
 
 ## API
 
@@ -118,6 +139,7 @@ on a host that can't reach the printer.
 | `GET` | `/profiles?search=term` | List filament profiles, optionally filtered case-insensitively |
 | `POST` | `/activate` | Send a filament profile to a printer tray over MQTT |
 | `POST` | `/reload` | Trigger orcaslicer-headless's `POST /profiles/reload`, then refresh the cached AMS-assignable profile list |
+| `PUT` | `/api/print-tracking/settings` | Persistently enable or disable tracking (`{"enabled": true}`) |
 | `GET` | `/web/` | HTMX web interface |
 
 ### `POST /activate`

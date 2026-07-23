@@ -16,6 +16,7 @@ from app.services.gateway_activator import GatewayActivator
 from app.services.mqtt_printer import MQTTPrinterClient
 from app.services.orcaslicer import OrcaSlicerClient
 from app.services.spoolman import SpoolmanClient
+from app.services.print_tracking import PrintTrackingService
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -49,6 +50,14 @@ async def lifespan(app: FastAPI):
     app.state.spoolman = spoolman
     app.state.mqtt = mqtt
     app.state.recent_activations: list[ActivationRecord] = []
+    print_tracking = PrintTrackingService(
+        gateway_url=settings.bambu_gateway_url,
+        printer_serial=settings.printer_serial,
+        directory=settings.print_tracking_dir,
+        spoolman=spoolman,
+        get_tray_uuids=mqtt.get_tray_uuids,
+    )
+    app.state.print_tracking = print_tracking
 
     # The `bambu_tray_uuid` spool extra field powers manual tray bindings.
     try:
@@ -63,9 +72,11 @@ async def lifespan(app: FastAPI):
     except Exception:
         logger.exception("Failed to load profiles from OrcaSlicer during startup")
 
+    await print_tracking.start()
     try:
         yield
     finally:
+        await print_tracking.close()
         try:
             mqtt.disconnect()
         except Exception:

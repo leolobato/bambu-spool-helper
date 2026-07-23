@@ -76,6 +76,28 @@ class SpoolmanClient:
         payload = response.json()
         return [SpoolmanSpool.model_validate(item) for item in payload if not item.get("archived")]
 
+    async def lookup_by_tray_uuid(self, tray_uuid: str) -> int | None:
+        matches = [
+            spool.id
+            for spool in await self.get_spools()
+            if spool.bambu_tray_uuid == tray_uuid
+        ]
+        return matches[0] if len(matches) == 1 else None
+
+    async def get_spool_used_length(self, spool_id: int) -> float:
+        spool = await self._get_spool(spool_id)
+        try:
+            return float(spool.get("used_length") or 0.0)
+        except (TypeError, ValueError):
+            return 0.0
+
+    async def use_length(self, *, spool_id: int, mm: float) -> None:
+        response = await self._client.put(
+            f"/api/v1/spool/{spool_id}/use",
+            json={"use_length": float(mm)},
+        )
+        response.raise_for_status()
+
     async def get_filaments(self) -> list[SpoolmanFilament]:
         response = await self._client.get("/api/v1/filament")
         response.raise_for_status()

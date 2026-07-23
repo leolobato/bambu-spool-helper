@@ -47,6 +47,7 @@ class Settings:
     port: int
     detail_fetch_concurrency: int
     bambu_gateway_url: str
+    print_tracking_dir: str
 
     @property
     def mqtt_enabled(self) -> bool:
@@ -69,4 +70,7 @@ def get_settings() -> Settings:
         port=_env_int("PORT", 9817),
         detail_fetch_concurrency=max(1, _env_int("DETAIL_FETCH_CONCURRENCY", 10)),
         bambu_gateway_url=_env_str("BAMBU_GATEWAY_URL").rstrip("/"),
+        print_tracking_dir=_env_str(
+            "PRINT_TRACKING_DIR", "data/print_tracking",
+        ),
     )

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -83,6 +83,11 @@ class StatusResponse(BaseModel):
     status: str = "ok"
     port: int
     profiles_loaded: int
+    print_tracking: dict[str, Any] = Field(default_factory=dict)
+
+
+class PrintTrackingSettingsRequest(BaseModel):
+    enabled: bool
 
 
 class ActivateRequest(BaseModel):

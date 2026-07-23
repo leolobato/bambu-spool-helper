@@ -1778,7 +1778,6 @@ def _build_mqtt_status(request: Request) -> dict[str, str | int | bool | None]:
             "last_error": last_error,
             "last_message_at": last_message_at,
         }
-
     if connected:
         if tray_count == 0:
             message = "Connected to printer. Waiting for AMS tray report..."
@@ -1805,6 +1804,21 @@ def _build_mqtt_status(request: Request) -> dict[str, str | int | bool | None]:
         "message": message,
         "last_error": last_error,
         "last_message_at": last_message_at,
+    }
+
+
+def _print_tracking_status(request: Request) -> dict[str, Any]:
+    service = getattr(request.app.state, "print_tracking", None)
+    if service is not None:
+        return service.status
+    return {
+        "available": False,
+        "enabled": False,
+        "connected": False,
+        "active": False,
+        "warnings": [],
+        "spool_totals_mm": {},
+        "last_error": None,
     }
 
 
@@ -1929,6 +1943,7 @@ async def _build_trays_context(request: Request, requested_machine_id: str = "")
         "tray_bindings": tray_bindings,
         "error": error,
         "mqtt_status": _build_mqtt_status(request),
+        "print_tracking": _print_tracking_status(request),
     }
 
 
@@ -1954,6 +1969,20 @@ async def trays_content(
 ) -> HTMLResponse:
     context = await _build_trays_context(request, machine)
     return templates.TemplateResponse(request, "partials/trays_content.html", context)
+
+
+@router.put("/print-tracking/settings")
+async def print_tracking_settings(
+    request: Request,
+    enabled: bool = Form(...),
+) -> HTMLResponse:
+    service = request.app.state.print_tracking
+    await service.set_enabled(enabled)
+    return templates.TemplateResponse(
+        request,
+        "partials/print_tracking_control.html",
+        {"request": request, "print_tracking": service.status},
+    )
 
 
 @router.get("/tray/{tray_index}/bind")

@@ -87,6 +87,7 @@ class TestWebNavigation(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("Printer offline", resp.text)
         self.assertIn("Gateway reports printer P01 is offline.", resp.text)
+        self.assertIn("Filament usage tracking", resp.text)
 
 
 if __name__ == "__main__":

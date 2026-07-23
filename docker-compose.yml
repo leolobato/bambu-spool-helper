@@ -12,9 +12,16 @@ services:
       PRINTER_SERIAL: ${PRINTER_SERIAL:-}
       DEFAULT_MACHINE_PROFILE_ID: ${DEFAULT_MACHINE_PROFILE_ID:-GM020}
       PORT: ${PORT:-9817}
+      BAMBU_GATEWAY_URL: ${BAMBU_GATEWAY_URL:-}
+      PRINT_TRACKING_DIR: ${PRINT_TRACKING_DIR:-/data/print_tracking}
+    volumes:
+      - bambu-spool-helper-data:/data
     networks:
       - spoolnet
 
 networks:
   spoolnet:
     external: true
+
+volumes:
+  bambu-spool-helper-data:
