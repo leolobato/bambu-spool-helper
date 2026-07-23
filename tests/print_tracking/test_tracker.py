@@ -21,7 +21,13 @@ def model_bytes(layer_count: int = 4) -> bytes:
 
 
 def snapshot(
-    *, job="job-1", state="RUNNING", layer=0, total=4, mapping=None,
+    *,
+    job="job-1",
+    state="RUNNING",
+    layer=0,
+    total=4,
+    mapping=None,
+    active_tray=None,
 ):
     return {
         "schema_version": 1,
@@ -31,6 +37,7 @@ def snapshot(
         "layer": {"current": layer, "total": total},
         "gcode_entry": "Metadata/plate_1.gcode",
         "ams_mapping": [0] if mapping is None else mapping,
+        "active_tray": active_tray,
         "source": {"available": True},
     }
 
@@ -160,6 +167,57 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.tracker.status["total_layers"], 9)
         await self.tracker.handle_snapshot(snapshot(layer=3))
         self.assertEqual(self.spoolman.calls, [(10, 1.0)])
+
+    async def test_single_filament_without_mapping_uses_reported_active_tray(self):
+        self.trays = {2: "uuid-2"}
+        self.spoolman.uuid_to_spool["uuid-2"] = 10
+        event = snapshot(mapping=[], active_tray=2)
+
+        await self.tracker.handle_snapshot(event)
+        await self.tracker.handle_snapshot(
+            snapshot(layer=1, mapping=[], active_tray=2),
+        )
+
+        self.assertEqual(self.spoolman.calls, [(10, 1.0)])
+        self.assertEqual(
+            self.tracker.checkpoint["routes"]["0"]["tray"], 2,
+        )
+        self.assertIn(
+            "reported active tray 2",
+            " ".join(self.tracker.status["warnings"]),
+        )
+
+    async def test_multicolor_without_mapping_is_blocked(self):
+        custom = BytesIO()
+        with zipfile.ZipFile(custom, "w") as archive:
+            archive.writestr(
+                "Metadata/plate_1.gcode",
+                "\n".join([
+                    "M83",
+                    "M73 L0",
+                    "M620 S0",
+                    "G1 E1",
+                    "M620 S1",
+                    "G1 E1",
+                ]),
+            )
+
+        async def fetch(_job):
+            return custom.getvalue()
+
+        self.tracker.fetch_3mf = fetch
+        await self.tracker.handle_snapshot(
+            snapshot(mapping=[], active_tray=2),
+        )
+        await self.tracker.handle_snapshot(
+            snapshot(layer=1, mapping=[], active_tray=2),
+        )
+
+        self.assertEqual(self.spoolman.calls, [])
+        self.assertIn(
+            "multicolor job",
+            " ".join(self.tracker.status["warnings"]),
+        )
 
     async def test_ambiguous_success_is_reconciled_without_duplicate(self):
         await self.tracker.handle_snapshot(snapshot(layer=0))

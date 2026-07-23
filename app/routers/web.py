@@ -904,6 +904,7 @@ async def settings_page(
             "machine_id": machine_id,
             "active_page": "settings",
             "expected_fields": request.app.state.spoolman.REQUIRED_SETTINGS_FILAMENT_FIELDS,
+            "print_tracking": _print_tracking_status(request),
         },
     )
 
@@ -1943,7 +1944,6 @@ async def _build_trays_context(request: Request, requested_machine_id: str = "")
         "tray_bindings": tray_bindings,
         "error": error,
         "mqtt_status": _build_mqtt_status(request),
-        "print_tracking": _print_tracking_status(request),
     }
 
 

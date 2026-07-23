@@ -60,9 +60,24 @@ class GcodeParserTests(unittest.TestCase):
         G1 E1
         T255
         G1 E10
-        T1000
-        G1 E10
         T0
+        T1000
         G1 E2
         """
         self.assertEqual(evaluate_gcode(gcode), {0: {0: 3.0}})
+
+    def test_bambu_t1000_preserves_m620_filament_for_print_layers(self):
+        gcode = """
+        M83
+        M620 S0A
+        T0
+        T1000
+        M73 L1
+        G1 E1
+        M73 L2
+        G1 E2
+        """
+        self.assertEqual(
+            evaluate_gcode(gcode),
+            {1: {0: 1.0}, 2: {0: 2.0}},
+        )

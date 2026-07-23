@@ -87,7 +87,35 @@ class TestWebNavigation(unittest.TestCase):
         self.assertEqual(resp.status_code, 200)
         self.assertIn("Printer offline", resp.text)
         self.assertIn("Gateway reports printer P01 is offline.", resp.text)
+        self.assertNotIn("Filament usage tracking", resp.text)
+
+    def test_settings_page_contains_filament_usage_tracking_toggle(self):
+        tracking = MagicMock()
+        tracking.status = {
+            "available": True,
+            "enabled": False,
+            "connected": False,
+            "active": False,
+            "warnings": [],
+            "spool_totals_mm": {},
+            "last_error": None,
+        }
+        app.state.print_tracking = tracking
+
+        spoolman = MagicMock()
+        spoolman.REQUIRED_SETTINGS_FILAMENT_FIELDS = []
+        app.state.spoolman = spoolman
+
+        with patch(
+            "app.routers.web._machine_context",
+            new=AsyncMock(return_value=([], "GM020")),
+        ):
+            client = TestClient(app)
+            resp = client.get("/web/settings?machine=GM020")
+
+        self.assertEqual(resp.status_code, 200)
         self.assertIn("Filament usage tracking", resp.text)
+        self.assertIn('hx-put="/web/print-tracking/settings"', resp.text)
 
 
 if __name__ == "__main__":

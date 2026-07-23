@@ -28,7 +28,7 @@ The important safety rules are:
   that tracking is unavailable for that job. It does not estimate usage.
 
 Tracking is off by default. Enable it with the **Filament usage tracking**
-toggle above the tray cards. The setting persists across restarts.
+toggle on the **Settings** screen. The setting persists across restarts.
 
 ## Components and data flow
 
@@ -137,7 +137,10 @@ Source handling:
 2. A reported `http://` or `https://` source is fetched over HTTP.
 3. A reported `file://`, `ftp://`, or `ftps://` source is read from the
    printer over implicit FTPS using the configured printer credentials.
-4. If no source is usable, the snapshot explicitly reports
+4. When Bambu Studio reports only a bare `.3mf` `gcode_file` name, the gateway
+   resolves that explicit filename in the printer’s standard `/cache`
+   directory and reads it over FTPS.
+5. If no source is usable, the snapshot explicitly reports
    `source.available: false`.
 
 ## G-code accounting
@@ -166,8 +169,9 @@ It understands:
 - `G92 E...` extrusion-coordinate resets;
 - extrusion on `G0`, `G1`, `G2`, and `G3`;
 - retractions and subsequent unretractions;
-- unload markers and pseudo-tools such as `M620 S255`, `T255`, and higher tool
-  numbers;
+- unload markers such as `M620 S255` and `T255`;
+- Bambu’s `T1000` printer-mode command, which preserves the preceding real
+  filament selection;
 - sparse filament indices; and
 - malformed or unrelated lines, which are ignored.
 
@@ -216,6 +220,11 @@ For every filament index found in the G-code:
 4. Find the single Spoolman spool whose `bambu_tray_uuid` extra field matches
    that UUID.
 5. Save the resolved filament → tray → UUID → spool route in the checkpoint.
+
+Some Bambu Studio single-filament jobs omit `ams_mapping` but report the active
+tray. For those jobs only, the helper routes the sole G-code filament through
+that explicitly reported tray and exposes an informational warning. A
+multicolor job without `ams_mapping` is blocked rather than inferred.
 
 The route is revalidated against a fresh gateway `/api/ams` response before
 every layer delivery, including during unattended prints. If that refresh
@@ -305,7 +314,7 @@ PRINT_TRACKING_DIR=./data/print_tracking
 
 ## Enabling and disabling
 
-The tray UI sends the toggle to an HTMX endpoint. Programmatic clients can
+The Settings UI sends the toggle to an HTMX endpoint. Programmatic clients can
 use:
 
 ```http

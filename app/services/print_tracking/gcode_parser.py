@@ -51,6 +51,11 @@ def evaluate_gcode(gcode: str) -> dict[int, dict[int, float]]:
             # Bambu change/unload macros use high pseudo-tool values. They do
             # not identify a printable filament and must not fall through to
             # the helper's external-spool route.
+            if index == 1000:
+                # T1000 is a printer-mode command emitted after the real
+                # M620/Tn selection and before normal printing. It does not
+                # unload that selected filament.
+                continue
             filament = None if index >= 255 else index
             continue
         match = _COMMAND_RE.match(raw_line)

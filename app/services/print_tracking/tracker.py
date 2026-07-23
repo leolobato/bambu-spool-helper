@@ -175,9 +175,31 @@ class PrintTracker:
                 for layer in model.values()
                 for filament in layer
             }
-            routes, warnings = await self.reporter.snapshot_routes(
-                indices, mapping,
+            mapping, route_warning = _resolve_missing_mapping(
+                mapping, indices, snapshot.get("active_tray"),
             )
+            if mapping:
+                routes, warnings = await self.reporter.snapshot_routes(
+                    indices, mapping,
+                )
+                if route_warning:
+                    warnings.insert(0, route_warning)
+            else:
+                warning = route_warning or (
+                    "Printer did not report an AMS mapping; automatic "
+                    "charging is blocked for this job"
+                )
+                warnings = [warning]
+                routes = {
+                    str(index): {
+                        "tray": None,
+                        "tray_uuid": None,
+                        "spool_id": None,
+                        "blocked": True,
+                        "warning": warning,
+                    }
+                    for index in sorted(indices)
+                }
             self.store.save_model(data)
             self.model = model
             reported_total = snapshot.get("layer", {}).get("total", 0)
@@ -305,3 +327,31 @@ class PrintTracker:
 
 def _model_layer_count(model: dict[int, dict[int, float]]) -> int:
     return max(model, default=-1) + 1
+
+
+def _resolve_missing_mapping(
+    mapping: list[int],
+    filament_indices: set[int],
+    active_tray,
+) -> tuple[list[int], str | None]:
+    if mapping:
+        return mapping, None
+    if len(filament_indices) != 1:
+        return [], (
+            "Printer did not report an AMS mapping for this multicolor job; "
+            "automatic charging is blocked"
+        )
+    try:
+        tray = int(active_tray)
+    except (TypeError, ValueError):
+        return [], (
+            "Printer did not report an AMS mapping or active tray; automatic "
+            "charging is blocked"
+        )
+    filament = next(iter(filament_indices))
+    inferred = [-1] * (filament + 1)
+    inferred[filament] = tray
+    return inferred, (
+        f"Printer did not report an AMS mapping; single-filament usage is "
+        f"routed through the reported active tray {tray}"
+    )
