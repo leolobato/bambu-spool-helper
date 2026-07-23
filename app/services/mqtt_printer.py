@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 
+from app.tray_labels import tray_label
+
 logger = logging.getLogger(__name__)
 
 MQTT_PORT = 8883
@@ -329,9 +331,10 @@ class MQTTPrinterClient:
 
         topic = f"device/{self._serial}/request"
         logger.info(
-            "Publishing AMS filament setting to topic=%s tray=%d tray_info_idx=%s",
+            "Publishing AMS filament setting to topic=%s tray=%s "
+            "tray_info_idx=%s",
             topic,
-            tray,
+            tray_label(tray),
             tray_info_idx,
         )
         publish_info = client.publish(topic, json.dumps(payload))
@@ -344,7 +347,11 @@ class MQTTPrinterClient:
             logger.error("MQTT publish timeout to topic=%s", topic)
             return False, "MQTT publish timeout"
 
-        logger.info("MQTT publish succeeded for tray=%d tray_info_idx=%s", tray, tray_info_idx)
+        logger.info(
+            "MQTT publish succeeded for tray=%s tray_info_idx=%s",
+            tray_label(tray),
+            tray_info_idx,
+        )
         return True, "Command sent to printer"
 
     def _next_sequence(self) -> int:

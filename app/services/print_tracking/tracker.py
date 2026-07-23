@@ -8,6 +8,7 @@ from app.services.print_tracking.gcode_parser import (
     evaluate_gcode,
     gcode_from_3mf,
 )
+from app.tray_labels import migrate_legacy_tray_references, tray_label
 
 logger = logging.getLogger(__name__)
 
@@ -247,6 +248,15 @@ class PrintTracker:
             saved.setdefault("total_layers", _model_layer_count(self.model))
             saved.setdefault("usage_validation", None)
             saved.setdefault("usage_reference_signature", None)
+            saved["warnings"] = [
+                migrate_legacy_tray_references(warning)
+                for warning in saved.get("warnings", [])
+            ]
+            for route in saved.get("routes", {}).values():
+                if route.get("warning"):
+                    route["warning"] = migrate_legacy_tray_references(
+                        route["warning"],
+                    )
             self.checkpoint = saved
             return True
         except Exception as exc:
@@ -453,5 +463,5 @@ def _resolve_missing_mapping(
     inferred[filament] = tray
     return inferred, (
         f"Printer did not report an AMS mapping; single-filament usage is "
-        f"routed through the reported active tray {tray}"
+        f"routed through the reported active tray {tray_label(tray)}"
     )

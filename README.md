@@ -20,7 +20,8 @@ Raspberry Pi alongside Spoolman.
 - **Web UI** (HTMX + Tailwind) for browsing Spoolman filaments and linking them to Bambu profiles
 - **REST API** compatible with the original macOS spool-helper app
 - **Direct AMS activation** over MQTT — sets filament type, color, and nozzle/bed temperatures on a chosen tray
-- **AMS + external spool support** — trays 0–3 for AMS slots, tray 4 for the external spool holder
+- **AMS + external spool support** — operator-facing slots use Bambu labels
+  (`A1`–`A4`), with a distinct `External Spool` route
 - **Custom profile support** via orcaslicer-headless — works with user profiles, not just system ones
 - **Create profiles from filament JSON** — paste an exported Bambu/OrcaSlicer filament JSON and the UI builds an AMS-assignable profile, prompting for missing fields (e.g. textured-plate temperature)
 - **Smart matching** — exact `(setting_id, filament_id)` first, falling back to filament ID, then scoring by material, type, and source priority (user > system)
@@ -152,7 +153,9 @@ be retrieved is shown as unsupported; usage is never estimated.
 }
 ```
 
-Tray values: **0–3** for AMS slots, **4** for the external spool holder.
+Tray protocol values remain **0–3** for AMS A slots and **4** for the external
+spool holder. Operator-facing responses and UI labels use **A1–A4** and
+**External Spool**; for example, protocol tray `2` is displayed as `A3`.
 
 Interactive API docs are available at `/docs` (Swagger UI) and `/redoc`.
 

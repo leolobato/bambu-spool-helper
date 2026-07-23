@@ -16,6 +16,7 @@ from fastapi.templating import Jinja2Templates
 
 from app.models import VALID_TRAY_TYPES, FilamentProfileResponse, MachineProfileResponse, SpoolmanFilament, SpoolmanSpool, TrayStatus
 from app.services.mqtt_printer import is_synthetic_slot_uuid
+from app.tray_labels import tray_label
 
 logger = logging.getLogger(__name__)
 
@@ -2155,7 +2156,11 @@ async def assign_spool_to_tray(
             spool_id=spool_id, tray_uuid=tray_uuid,
         )
     except Exception as exc:
-        logger.exception("bind_spool_to_tray_uuid failed for spool=%s tray=%s", spool_id, tray_index)
+        logger.exception(
+            "bind_spool_to_tray_uuid failed for spool=%s tray=%s",
+            spool_id,
+            tray_label(tray_index),
+        )
         return await _render_tray_card_error(
             request, tray_index=tray_index, machine=machine,
             error_message=f"Failed to bind spool to tray UUID in Spoolman: {exc}",

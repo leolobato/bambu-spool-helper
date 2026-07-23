@@ -17,11 +17,9 @@ from app.models import (
     PrintTrackingSettingsRequest,
     StatusResponse,
 )
+from app.tray_labels import tray_label
 
 router = APIRouter(tags=["API"])
-
-
-TRAY_LABELS = ["Tray 1", "Tray 2", "Tray 3", "Tray 4", "Ext"]
 
 
 @router.get("/status", response_model=StatusResponse)
@@ -108,7 +106,7 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
             raise HTTPException(
                 status_code=409,
                 detail=(
-                    f"Tray {payload.tray} has no UUID yet "
+                    f"{tray_label(payload.tray)} has no UUID yet "
                     "(AMS hasn't reported this slot). Retry once scanned."
                 ),
             )
@@ -135,11 +133,11 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
         remain=-1,
     )
 
-    tray_label = TRAY_LABELS[payload.tray]
+    target_label = tray_label(payload.tray)
     message = (
-        f"Updated {tray_label}: {profile_name}"
+        f"Updated {target_label}: {profile_name}"
         if success
-        else f"Failed to update {tray_label}: {mqtt_message}"
+        else f"Failed to update {target_label}: {mqtt_message}"
     )
     if success and mqtt_message != "Command sent to printer":
         message = f"{message} ({mqtt_message})"

@@ -73,6 +73,18 @@ class ReporterTests(unittest.IsolatedAsyncioTestCase):
         for raw in (-1, 254, 255):
             self.assertEqual(helper_tray(0, [raw]), 4)
 
+    async def test_route_warnings_use_operator_facing_ams_labels(self):
+        async def no_trays():
+            return {}
+
+        reporter = SpoolmanUsageReporter(FakeSpoolman(), no_trays)
+        _, warnings = await reporter.snapshot_routes({0}, [2])
+
+        self.assertEqual(
+            warnings,
+            ["Filament 0: A3 has no binding UUID"],
+        )
+
     async def test_tray_refresh_failure_pauses_delivery_without_blocking_route(self):
         async def unavailable_trays():
             raise RuntimeError("gateway offline")

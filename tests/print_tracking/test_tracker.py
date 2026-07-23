@@ -227,7 +227,7 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
             self.tracker.checkpoint["routes"]["0"]["tray"], 2,
         )
         self.assertIn(
-            "reported active tray 2",
+            "reported active tray A3",
             " ".join(self.tracker.status["warnings"]),
         )
 

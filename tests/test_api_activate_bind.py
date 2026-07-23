@@ -51,6 +51,7 @@ class TestActivateLegacy(unittest.TestCase):
         client = TestClient(app)
         resp = client.post("/activate", json=_activate_body())
         self.assertEqual(resp.status_code, 200)
+        self.assertIn("Updated A1", resp.json()["message"])
         spoolman.bind_spool_to_tray_uuid.assert_not_awaited()
         mqtt.activate_filament.assert_called_once()
 
@@ -75,6 +76,7 @@ class TestActivateWithSpoolId(unittest.TestCase):
         client = TestClient(app)
         resp = client.post("/activate", json=_activate_body(spool_id=42))
         self.assertEqual(resp.status_code, 409)
+        self.assertIn("A1 has no UUID", resp.json()["detail"])
         spoolman.bind_spool_to_tray_uuid.assert_not_awaited()
         mqtt.activate_filament.assert_not_called()
 

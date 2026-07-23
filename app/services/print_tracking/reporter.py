@@ -5,7 +5,8 @@ from __future__ import annotations
 import math
 from collections.abc import Callable
 
-EXTERNAL_HELPER_TRAY = 4
+from app.tray_labels import EXTERNAL_HELPER_TRAY, tray_label
+
 EXTERNAL_PRINTER_TRAYS = {-1, 254, 255}
 
 
@@ -35,11 +36,13 @@ class SpoolmanUsageReporter:
             )
             warning = None
             if not uuid:
-                warning = f"Filament {index}: tray {tray} has no binding UUID"
+                warning = (
+                    f"Filament {index}: {tray_label(tray)} has no binding UUID"
+                )
             elif spool_id is None:
                 warning = (
                     f"Filament {index}: no uniquely bound Spoolman spool "
-                    f"for tray {tray}"
+                    f"for {tray_label(tray)}"
                 )
             if warning:
                 warnings.append(warning)
@@ -76,7 +79,7 @@ class SpoolmanUsageReporter:
                 self._block_route(
                     checkpoint,
                     route,
-                    f"Tray {tray} changed during the print; filament "
+                    f"{tray_label(tray)} changed during the print; filament "
                     f"{filament_index} is no longer charged",
                 )
                 save()
@@ -88,7 +91,8 @@ class SpoolmanUsageReporter:
                 self._block_route(
                     checkpoint,
                     route,
-                    f"Tray {tray} binding changed during the print; filament "
+                    f"{tray_label(tray)} binding changed during the print; "
+                    f"filament "
                     f"{filament_index} is no longer charged",
                 )
                 save()

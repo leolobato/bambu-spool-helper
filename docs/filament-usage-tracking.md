@@ -274,7 +274,10 @@ For every filament index found in the G-code:
 
 Some Bambu Studio single-filament jobs omit `ams_mapping` but report the active
 tray. For those jobs only, the helper routes the sole G-code filament through
-that explicitly reported tray and exposes an informational warning. A
+that explicitly reported tray and exposes an informational warning. Internal
+tray IDs are zero-based, but every operator-facing label uses the AMS name and
+one-based slot: tray `2` is shown as `A3`, and helper tray `4` is shown as
+`External Spool`. A
 multicolor job without `ams_mapping` is blocked rather than inferred.
 
 The route is revalidated against a fresh gateway `/api/ams` response before

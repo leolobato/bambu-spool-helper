@@ -145,9 +145,9 @@ class TrayStatus(BaseModel):
 
     @property
     def label(self) -> str:
-        if self.tray_index == 4:
-            return "External Spool"
-        return f"Tray {self.tray_index + 1}"
+        from app.tray_labels import tray_label
+
+        return tray_label(self.tray_index)
 
     @property
     def is_empty(self) -> bool:
