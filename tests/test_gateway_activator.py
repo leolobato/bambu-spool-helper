@@ -220,14 +220,57 @@ class TestStatus(unittest.TestCase):
 class TestGetTrayUuids(unittest.IsolatedAsyncioTestCase):
     async def test_returns_tray_id_to_uuid_dict(self):
         a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
-        fake_trays = {
+        a._trays = {
             0: type("T", (), {"tray_uuid": "uuid-0"})(),
             1: type("T", (), {"tray_uuid": "uuid-1"})(),
             255: type("T", (), {"tray_uuid": "uuid-ext"})(),
         }
-        with patch.object(a, "get_tray_data", return_value=fake_trays):
+        with patch.object(a, "_refresh_trays_safely", return_value=True):
             result = await a.get_tray_uuids()
         self.assertEqual(result, {0: "uuid-0", 1: "uuid-1", 255: "uuid-ext"})
+
+    async def test_refreshes_gateway_trays_on_every_tracking_read(self):
+        a = _activator()
+        a._client.get.side_effect = [
+            _resp(200, {
+                "trays": [{
+                    "ams_id": 0,
+                    "tray_id": 0,
+                    "filament_id": "GFA00",
+                    "tray_uuid": "uuid-old",
+                }],
+            }),
+            _resp(200, {
+                "trays": [{
+                    "ams_id": 0,
+                    "tray_id": 0,
+                    "filament_id": "GFA00",
+                    "tray_uuid": "uuid-new",
+                }],
+            }),
+        ]
+
+        self.assertEqual(await a.get_tray_uuids(), {0: "uuid-old"})
+        self.assertEqual(await a.get_tray_uuids(), {0: "uuid-new"})
+        self.assertEqual(a._client.get.call_count, 2)
+
+    async def test_refresh_failure_does_not_validate_against_stale_cache(self):
+        a = _activator()
+        a._client.get.side_effect = [
+            _resp(200, {
+                "trays": [{
+                    "ams_id": 0,
+                    "tray_id": 0,
+                    "filament_id": "GFA00",
+                    "tray_uuid": "uuid-old",
+                }],
+            }),
+            httpx.ConnectError("offline"),
+        ]
+
+        self.assertEqual(await a.get_tray_uuids(), {0: "uuid-old"})
+        with self.assertRaisesRegex(RuntimeError, "Gateway unreachable"):
+            await a.get_tray_uuids()
 
 
 class TestGetTrayUuidGateway(unittest.TestCase):
@@ -260,24 +303,24 @@ class TestGetTrayUuidGateway(unittest.TestCase):
 class TestGetTrayUuidsFiltersPlaceholders(unittest.IsolatedAsyncioTestCase):
     async def test_get_tray_uuids_skips_placeholder(self):
         a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
-        fake_trays = {
+        a._trays = {
             0: type("T", (), {"tray_uuid": "real-uuid"})(),
             1: type("T", (), {"tray_uuid": "00000000000000000000000000000000"})(),
             2: type("T", (), {"tray_uuid": ""})(),
         }
-        with patch.object(a, "get_tray_data", return_value=fake_trays):
+        with patch.object(a, "_refresh_trays_safely", return_value=True):
             result = await a.get_tray_uuids()
         self.assertEqual(result, {0: "real-uuid"})
 
     async def test_get_tray_uuids_returns_synthetic_for_loaded_non_rfid_slot(self):
         a = GatewayActivator(gateway_url="http://gw", printer_serial="P01")
-        fake_trays = {
+        a._trays = {
             0: type("T", (), {"tray_uuid": "real-uuid", "tray_info_idx": "GFA00"})(),
             1: type("T", (), {"tray_uuid": "00000000000000000000000000000000", "tray_info_idx": "GFA01"})(),
             2: type("T", (), {"tray_uuid": "", "tray_info_idx": "GFA02"})(),
             3: type("T", (), {"tray_uuid": "00000000000000000000000000000000", "tray_info_idx": ""})(),
         }
-        with patch.object(a, "get_tray_data", return_value=fake_trays):
+        with patch.object(a, "_refresh_trays_safely", return_value=True):
             result = await a.get_tray_uuids()
         self.assertEqual(
             result,

@@ -74,7 +74,7 @@ class GatewayPrintClient:
             except Exception as exc:
                 self.connected = False
                 self.last_error = str(exc)
-            await asyncio.sleep(min(60.0, 2.0 ** min(attempt, 5)))
+            await asyncio.sleep(_reconnect_delay(attempt))
             attempt += 1
 
     async def _stream_once(self) -> None:
@@ -110,3 +110,7 @@ class GatewayPrintClient:
             return
         self.last_event = datetime.now(timezone.utc).isoformat()
         await self.on_snapshot(snapshot)
+
+
+def _reconnect_delay(attempt: int) -> float:
+    return min(60.0, 2.0 ** min(max(0, attempt), 6))

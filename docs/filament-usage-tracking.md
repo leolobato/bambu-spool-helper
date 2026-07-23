@@ -19,6 +19,8 @@ The important safety rules are:
 - A cancelled or failed print charges only layers that were already confirmed
   complete.
 - Restarting either service does not normally charge the same layer twice.
+- A retained completed/failed job event is ignored unless a matching recovery
+  checkpoint proves that work is still owed.
 - If a tray, tray-to-filament route, or Spoolman binding changes ambiguously
   during a print, tracking stops charging that affected filament instead of
   guessing.
@@ -104,7 +106,8 @@ The broker:
 - replaces an old queued snapshot with the newest snapshot when a consumer is
   slow;
 - sends SSE comment keepalives during quiet periods;
-- keeps a LAN MQTT connection leased while an SSE subscriber exists; and
+- keeps a LAN MQTT connection leased while an SSE subscriber exists;
+- clears accumulated job-specific fields at each detected job boundary; and
 - retains only the active job’s registered 3MF in memory.
 
 `job_key` is the identity used for checkpoints and file validation.
@@ -163,7 +166,8 @@ It understands:
 - `G92 E...` extrusion-coordinate resets;
 - extrusion on `G0`, `G1`, `G2`, and `G3`;
 - retractions and subsequent unretractions;
-- unload markers such as filament `255` and `65535`;
+- unload markers and pseudo-tools such as `M620 S255`, `T255`, and higher tool
+  numbers;
 - sparse filament indices; and
 - malformed or unrelated lines, which are ignored.
 
@@ -194,6 +198,12 @@ If there is no matching checkpoint—for example, tracking was just enabled
 mid-print—the helper establishes the current layer as its baseline and does
 not backfill earlier layers.
 
+Terminal snapshots are a special case. The gateway retains the latest complete
+snapshot so reconnecting clients can recover, but the helper only processes a
+finished, cancelled, or failed snapshot when the same job has a persisted
+checkpoint. With no matching checkpoint, it does not fetch the 3MF or charge
+any tail layers.
+
 ## Resolving a G-code filament to a Spoolman spool
 
 For every filament index found in the G-code:
@@ -207,8 +217,12 @@ For every filament index found in the G-code:
    that UUID.
 5. Save the resolved filament → tray → UUID → spool route in the checkpoint.
 
-The route is revalidated before every layer delivery. The affected filament is
-blocked for the rest of the job if:
+The route is revalidated against a fresh gateway `/api/ams` response before
+every layer delivery, including during unattended prints. If that refresh
+fails, delivery pauses with an error and is retried from the checkpoint; stale
+cached tray data is not treated as confirmation.
+
+The affected filament is blocked for the rest of the job if:
 
 - the tray UUID changes;
 - the `ams_mapping` entry changes;
@@ -255,6 +269,11 @@ risking a duplicate deduction.
 This reduces duplicate charging but cannot provide a distributed transaction
 across the helper and Spoolman. Operators should investigate any ambiguity
 warning before manually changing spool usage.
+
+If the printer starts a replacement job while an earlier job still has a
+pending delivery, the helper keeps and reconciles the earlier checkpoint
+before creating the replacement job’s checkpoint. The new job begins from its
+then-current layer, so waiting for reconciliation does not cause backfill.
 
 ## Persistent files
 

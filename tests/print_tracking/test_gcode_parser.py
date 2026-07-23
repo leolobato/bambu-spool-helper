@@ -51,3 +51,18 @@ class GcodeParserTests(unittest.TestCase):
         G1 E10
         """
         self.assertEqual(evaluate_gcode(gcode), {0: {0: 1.0}})
+
+    def test_pseudo_tools_do_not_charge_the_external_spool(self):
+        gcode = """
+        M83
+        T0
+        M73 L0
+        G1 E1
+        T255
+        G1 E10
+        T1000
+        G1 E10
+        T0
+        G1 E2
+        """
+        self.assertEqual(evaluate_gcode(gcode), {0: {0: 3.0}})

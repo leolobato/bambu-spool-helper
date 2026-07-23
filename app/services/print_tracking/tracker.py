@@ -37,7 +37,7 @@ class PrintTracker:
             "state": cp.get("state") if cp else None,
             "current_layer": cp.get("current_layer") if cp else None,
             "completed_through": cp.get("completed_through") if cp else None,
-            "total_layers": len(self.model) if self.model else None,
+            "total_layers": cp.get("total_layers") if cp else None,
             "spool_totals_mm": (
                 cp.get("spool_totals_mm", {}) if cp else self.last_totals
             ),
@@ -57,6 +57,10 @@ class PrintTracker:
             current_layer = max(0, int(layer_data.get("current") or 0))
         except (TypeError, ValueError):
             current_layer = 0
+        try:
+            total_layers = max(0, int(layer_data.get("total") or 0))
+        except (TypeError, ValueError):
+            total_layers = 0
 
         if not job_key:
             if self.checkpoint is not None and state == "IDLE":
@@ -74,6 +78,21 @@ class PrintTracker:
         if state not in ACTIVE_STATES | FINISHED_STATES | FAILED_STATES:
             return
 
+        # A process can restart after the printer has already moved on to a
+        # replacement job while the old checkpoint still has a delivery to
+        # reconcile. Restore and finish that ledger before activating the new
+        # job; never discard an ambiguous Spoolman request.
+        saved = self.store.load() if self.checkpoint is None else None
+        if saved is not None and saved.get("job_key") != job_key:
+            if not self._restore(saved):
+                return
+            await self._finalize(
+                flush=False,
+                current_layer=int(saved.get("current_layer") or 0),
+            )
+            if self.checkpoint is not None:
+                return
+
         if (
             self.checkpoint is None
             or self.checkpoint.get("job_key") != job_key
@@ -87,12 +106,18 @@ class PrintTracker:
                         self.checkpoint.get("current_layer") or 0
                     ),
                 )
+                if self.checkpoint is not None:
+                    # The old job still has an unresolved delivery. Keep its
+                    # checkpoint and retry it on a later snapshot.
+                    return
             if not await self._activate(snapshot, current_layer):
                 return
 
         assert self.checkpoint is not None
         self.checkpoint["state"] = state
         self.checkpoint["current_layer"] = current_layer
+        if total_layers:
+            self.checkpoint["total_layers"] = total_layers
         self._detect_mapping_change(snapshot.get("ams_mapping") or [])
         self.store.save(self.checkpoint)
 
@@ -108,11 +133,8 @@ class PrintTracker:
         saved = self.store.load()
         if saved is not None and saved.get("job_key") == job_key:
             try:
-                _, text = gcode_from_3mf(
-                    self.store.model_bytes(), saved.get("gcode_entry"),
-                )
-                self.model = evaluate_gcode(text)
-                self.checkpoint = saved
+                if not self._restore(saved):
+                    return False
                 self._detect_mapping_change(
                     snapshot.get("ams_mapping") or [],
                 )
@@ -125,6 +147,14 @@ class PrintTracker:
                 self.last_error = f"Tracking checkpoint is unreadable: {exc}"
                 logger.exception("Failed to restore tracking checkpoint")
                 return False
+
+        # The gateway deliberately retains its last complete snapshot. A
+        # terminal snapshot without a matching checkpoint cannot represent
+        # work this helper still owes, so activating it would replay tail
+        # layers after every reconnect or enable.
+        state = str(snapshot.get("state") or "").upper()
+        if state in FINISHED_STATES | FAILED_STATES:
+            return False
 
         # No matching checkpoint: deliberately baseline at the current layer.
         # This is also the re-enable behavior after a disabled interval.
@@ -150,6 +180,11 @@ class PrintTracker:
             )
             self.store.save_model(data)
             self.model = model
+            reported_total = snapshot.get("layer", {}).get("total", 0)
+            try:
+                total_layers = max(0, int(reported_total or 0))
+            except (TypeError, ValueError):
+                total_layers = 0
             self.checkpoint = {
                 "job_key": job_key,
                 "job_name": snapshot.get("job_name"),
@@ -159,6 +194,7 @@ class PrintTracker:
                 "state": str(snapshot.get("state") or "RUNNING").upper(),
                 "current_layer": current_layer,
                 "completed_through": current_layer - 1,
+                "total_layers": total_layers or _model_layer_count(model),
                 "spool_totals_mm": {},
                 "deliveries": {},
                 "pending_delivery": None,
@@ -174,6 +210,22 @@ class PrintTracker:
             self.model = None
             self.checkpoint = None
             self.store.clear_checkpoint()
+            return False
+
+    def _restore(self, saved: dict) -> bool:
+        try:
+            _, text = gcode_from_3mf(
+                self.store.model_bytes(), saved.get("gcode_entry"),
+            )
+            self.model = evaluate_gcode(text)
+            saved.setdefault("total_layers", _model_layer_count(self.model))
+            self.checkpoint = saved
+            return True
+        except Exception as exc:
+            self.last_error = f"Tracking checkpoint is unreadable: {exc}"
+            logger.exception("Failed to restore tracking checkpoint")
+            self.model = None
+            self.checkpoint = None
             return False
 
     def _detect_mapping_change(self, mapping) -> None:
@@ -249,3 +301,7 @@ class PrintTracker:
         self.model = None
         self.last_error = None
         self.store.clear_checkpoint()
+
+
+def _model_layer_count(model: dict[int, dict[int, float]]) -> int:
+    return max(model, default=-1) + 1

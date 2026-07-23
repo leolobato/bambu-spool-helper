@@ -47,7 +47,11 @@ def evaluate_gcode(gcode: str) -> dict[int, dict[int, float]]:
     for raw_line in gcode.splitlines():
         tool = _TOOL_RE.match(raw_line)
         if tool:
-            filament = int(tool.group(1))
+            index = int(tool.group(1))
+            # Bambu change/unload macros use high pseudo-tool values. They do
+            # not identify a printable filament and must not fall through to
+            # the helper's external-spool route.
+            filament = None if index >= 255 else index
             continue
         match = _COMMAND_RE.match(raw_line)
         if not match:

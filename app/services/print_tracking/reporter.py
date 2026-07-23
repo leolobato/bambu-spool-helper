@@ -61,7 +61,10 @@ class SpoolmanUsageReporter:
         save: Callable[[], None],
     ) -> tuple[bool, str | None]:
         """Deliver one aggregate PUT per spool; resume partial layers safely."""
-        current_uuids = await self.get_tray_uuids()
+        try:
+            current_uuids = await self.get_tray_uuids()
+        except Exception as exc:
+            return False, f"Unable to refresh printer tray routes: {exc}"
         by_spool: dict[int, float] = {}
         for filament_index, amount in usage.items():
             route = checkpoint["routes"].get(str(filament_index))

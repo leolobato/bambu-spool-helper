@@ -20,13 +20,15 @@ def model_bytes(layer_count: int = 4) -> bytes:
     return out.getvalue()
 
 
-def snapshot(*, job="job-1", state="RUNNING", layer=0, mapping=None):
+def snapshot(
+    *, job="job-1", state="RUNNING", layer=0, total=4, mapping=None,
+):
     return {
         "schema_version": 1,
         "job_key": job,
         "job_name": "test.3mf",
         "state": state,
-        "layer": {"current": layer, "total": 4},
+        "layer": {"current": layer, "total": total},
         "gcode_entry": "Metadata/plate_1.gcode",
         "ams_mapping": [0] if mapping is None else mapping,
         "source": {"available": True},
@@ -38,6 +40,7 @@ class FakeSpoolman:
         self.used = {10: 0.0}
         self.calls: list[tuple[int, float]] = []
         self.fail_after_apply = False
+        self.fail_before_apply = False
         self.uuid_to_spool = {"uuid-0": 10}
 
     async def lookup_by_tray_uuid(self, uuid):
@@ -48,6 +51,8 @@ class FakeSpoolman:
 
     async def use_length(self, *, spool_id, mm):
         self.calls.append((spool_id, mm))
+        if self.fail_before_apply:
+            raise RuntimeError("Spoolman unavailable")
         self.used[spool_id] += mm
         if self.fail_after_apply:
             self.fail_after_apply = False
@@ -97,6 +102,35 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(self.spoolman.calls, [(10, 1.0)] * 4)
 
+    async def test_replayed_finish_snapshot_never_charges_again(self):
+        finished = snapshot(state="FINISH", layer=0)
+        await self.tracker.handle_snapshot(snapshot(layer=0))
+        await self.tracker.handle_snapshot(finished)
+        self.assertEqual(self.spoolman.used[10], 4.0)
+
+        await self.tracker.handle_snapshot(finished)
+        await self.tracker.handle_snapshot(finished)
+        self.assertEqual(self.spoolman.used[10], 4.0)
+
+        async def unexpected_fetch(_job):
+            raise AssertionError("terminal snapshot must not fetch its 3MF")
+
+        restarted = PrintTracker(
+            store=self.store,
+            reporter=self.reporter,
+            fetch_3mf=unexpected_fetch,
+        )
+        await restarted.handle_snapshot(finished)
+        self.assertEqual(self.spoolman.used[10], 4.0)
+        self.assertFalse(restarted.status["active"])
+
+    async def test_untracked_terminal_snapshot_does_not_charge_tail(self):
+        await self.tracker.handle_snapshot(
+            snapshot(state="FINISH", layer=2),
+        )
+        self.assertEqual(self.spoolman.calls, [])
+        self.assertFalse(self.tracker.status["active"])
+
     async def test_idle_after_running_is_treated_as_cancellation(self):
         await self.tracker.handle_snapshot(snapshot(layer=0))
         await self.tracker.handle_snapshot(snapshot(layer=2))
@@ -121,8 +155,9 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(self.spoolman.used[10], 3.0)
 
     async def test_no_checkpoint_begins_at_current_layer(self):
-        await self.tracker.handle_snapshot(snapshot(layer=2))
+        await self.tracker.handle_snapshot(snapshot(layer=2, total=9))
         self.assertEqual(self.spoolman.calls, [])
+        self.assertEqual(self.tracker.status["total_layers"], 9)
         await self.tracker.handle_snapshot(snapshot(layer=3))
         self.assertEqual(self.spoolman.calls, [(10, 1.0)])
 
@@ -136,6 +171,35 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
         await self.tracker.handle_snapshot(snapshot(layer=2))
         self.assertEqual(self.spoolman.used[10], 2.0)
         self.assertEqual(len(self.spoolman.calls), 2)
+
+    async def test_replacement_preserves_pending_delivery_across_restart(self):
+        await self.tracker.handle_snapshot(snapshot(layer=0))
+        self.spoolman.fail_before_apply = True
+        await self.tracker.handle_snapshot(snapshot(layer=1))
+        self.assertEqual(self.store.load()["job_key"], "job-1")
+
+        async def tray_uuids():
+            return dict(self.trays)
+
+        async def fetch(_job):
+            return model_bytes()
+
+        restarted = PrintTracker(
+            store=self.store,
+            reporter=SpoolmanUsageReporter(self.spoolman, tray_uuids),
+            fetch_3mf=fetch,
+        )
+        replacement = snapshot(job="job-2", layer=0)
+        await restarted.handle_snapshot(replacement)
+        self.assertEqual(self.store.load()["job_key"], "job-1")
+        self.assertEqual(restarted.status["job_key"], "job-1")
+        self.assertIsNotNone(restarted.status["pending_delivery"])
+
+        self.spoolman.fail_before_apply = False
+        await restarted.handle_snapshot(replacement)
+        self.assertEqual(self.spoolman.used[10], 1.0)
+        self.assertEqual(self.store.load()["job_key"], "job-2")
+        self.assertEqual(restarted.status["job_key"], "job-2")
 
     async def test_tray_or_mapping_change_blocks_affected_filament(self):
         await self.tracker.handle_snapshot(snapshot(layer=0))

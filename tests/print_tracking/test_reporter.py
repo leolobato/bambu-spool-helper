@@ -72,3 +72,33 @@ class ReporterTests(unittest.IsolatedAsyncioTestCase):
     def test_external_printer_values_normalize_to_helper_tray_four(self):
         for raw in (-1, 254, 255):
             self.assertEqual(helper_tray(0, [raw]), 4)
+
+    async def test_tray_refresh_failure_pauses_delivery_without_blocking_route(self):
+        async def unavailable_trays():
+            raise RuntimeError("gateway offline")
+
+        reporter = SpoolmanUsageReporter(FakeSpoolman(), unavailable_trays)
+        route = {
+            "tray": 0,
+            "tray_uuid": "slot:SERIAL:0",
+            "spool_id": 1,
+            "blocked": False,
+            "warning": None,
+        }
+        checkpoint = {
+            "routes": {"0": route},
+            "deliveries": {},
+            "spool_totals_mm": {},
+            "warnings": [],
+        }
+
+        ok, error = await reporter.deliver_layer(
+            layer=0,
+            usage={0: 1.0},
+            checkpoint=checkpoint,
+            save=lambda: None,
+        )
+
+        self.assertFalse(ok)
+        self.assertIn("gateway offline", error)
+        self.assertFalse(route["blocked"])

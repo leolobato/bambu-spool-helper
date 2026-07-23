@@ -82,15 +82,21 @@ class GatewayActivator:
     async def get_tray_uuids(self) -> dict[int, str]:
         """Return {tray_id: tray_uuid} for the moment of the call.
 
-        Async wrapper around the sync `get_tray_data` (which issues an HTTP
-        GET inside a thread-safe call). For slots with a real RFID uuid,
-        returns it; for slots that have filament loaded but no RFID tag,
+        Tracking requires a fresh gateway read so an unattended print does not
+        validate a route against the UI cache. For slots with a real RFID
+        uuid, returns it; for slots that have filament loaded but no RFID tag,
         returns the synthetic `slot:<serial>:<tray_id>` so non-Bambu spools
         bound by slot still resolve. Truly empty slots are omitted.
         """
 
         def _read():
-            data = self.get_tray_data()
+            if not self.configured:
+                return {}
+            if not self._refresh_trays_safely():
+                raise RuntimeError(
+                    self._last_error or "Gateway tray refresh failed"
+                )
+            data = dict(self._trays)
             result: dict[int, str] = {}
             for tid, t in data.items():
                 uuid = getattr(t, "tray_uuid", "") or ""
@@ -186,7 +192,7 @@ class GatewayActivator:
         self._last_error = None
         return True, "Command sent via gateway"
 
-    def _refresh_trays_safely(self) -> None:
+    def _refresh_trays_safely(self) -> bool:
         try:
             url = f"{self._gateway_url}/api/ams"
             resp = self._client.get(url, params={"printer_id": self._serial})
@@ -195,9 +201,11 @@ class GatewayActivator:
             self._trays = _merge_sticky_tray_uuids(self._trays, fresh)
             self._last_message_at = datetime.now(timezone.utc)
             self._last_error = None
-        except httpx.HTTPError as exc:
+            return True
+        except (httpx.HTTPError, ValueError, TypeError, AttributeError) as exc:
             self._last_error = f"Gateway unreachable: {exc}"
             logger.warning("Gateway tray refresh failed: %s", exc)
+            return False
 
     def _refresh_printer_status_safely(self) -> bool:
         try:
