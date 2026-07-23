@@ -26,6 +26,9 @@ The important safety rules are:
   guessing.
 - If an externally started print has no retrievable 3MF file, the UI reports
   that tracking is unavailable for that job. It does not estimate usage.
+- When Bambu Cloud metadata is available, the helper compares its full-job
+  slicer totals with the parsed G-code and warns about a material difference.
+  Cloud totals are a safety check only and are never charged to Spoolman.
 
 Tracking is off by default. Enable it with the **Filament usage tracking**
 toggle on the **Settings** screen. The setting persists across restarts.
@@ -87,6 +90,25 @@ data: {
   "gcode_entry": "Metadata/plate_1.gcode",
   "ams_mapping": [0, 2],
   "active_tray": 2,
+  "usage_reference": {
+    "available": true,
+    "source": "bambu_cloud",
+    "subtask_id": "67890",
+    "title": "part",
+    "plate_index": 1,
+    "total_weight_g": 18.4,
+    "filaments": [
+      {
+        "filament_index": 0,
+        "used_length_mm": 6120.0,
+        "used_weight_g": 18.4,
+        "type": "PLA",
+        "color": "#FFFFFF"
+      }
+    ],
+    "length_validation_available": true,
+    "reason": null
+  },
   "source": {
     "available": true,
     "kind": "registered",
@@ -140,8 +162,37 @@ Source handling:
 4. When Bambu Studio reports only a bare `.3mf` `gcode_file` name, the gateway
    resolves that explicit filename in the printer’s standard `/cache`
    directory and reads it over FTPS.
-5. If no source is usable, the snapshot explicitly reports
+5. If the gateway is signed into Bambu Cloud, it asks the network plugin for
+   the exact reported `subtask_id`. An explicit signed HTTP(S) URL whose path
+   ends in `.3mf` can fill a still-missing source. Thumbnail, ZIP, and
+   extensionless URLs are not guessed to be print files.
+6. If no source is usable, the snapshot explicitly reports
    `source.available: false`.
+
+## Optional Bambu Cloud validation
+
+When Bambu Cloud is enabled and signed in on the gateway, the gateway uses the
+network plugin’s existing authenticated session to fetch metadata for the
+printer-reported `subtask_id`. No additional cloud credentials or access-token
+file is maintained by this feature.
+
+The selected plate can include Bambu Studio’s full-job `used_m` and `used_g`
+values for each slicer filament. The gateway publishes those values as
+`usage_reference`. The helper compares `used_m` with the total millimetres it
+parsed from the 3MF:
+
+- filament positions are compared by slicer filament index;
+- a difference is considered material when it exceeds both 15 percent and a
+  minimum tolerance of 50 mm;
+- a material difference adds a warning to `GET /status` and the Settings UI;
+  and
+- matching or mismatching cloud data never creates a Spoolman use request.
+
+This deliberately differs from integrations that deduct the cloud weight
+estimate at completion. The reference detects a wrong file, unexpected parser
+behavior, or changed slicer metadata, while completed-layer G-code remains the
+only source of chargeable usage. If cloud metadata is absent, late, or
+temporarily unavailable, normal G-code tracking continues unchanged.
 
 ## G-code accounting
 
@@ -352,6 +403,23 @@ When disabled, the helper:
   "total_layers": 120,
   "spool_totals_mm": {"42": 3845.7},
   "pending_delivery": null,
+  "usage_validation": {
+    "source": "bambu_cloud",
+    "available": true,
+    "matched": true,
+    "tolerance_percent": 15,
+    "minimum_tolerance_mm": 50,
+    "filaments": [
+      {
+        "filament_index": 0,
+        "expected_mm": 6120.0,
+        "parsed_mm": 6118.2,
+        "difference_mm": -1.8,
+        "difference_percent": 0.0,
+        "matched": true
+      }
+    ]
+  },
   "warnings": [],
   "last_event": "2026-07-23T12:34:56+00:00",
   "last_error": null
@@ -370,6 +438,7 @@ Meaning of the main fields:
 | `completed_through` | Highest layer fully processed by the helper |
 | `spool_totals_mm` | Successfully delivered usage for the current or most recent job |
 | `pending_delivery` | Request whose outcome still needs reconciliation |
+| `usage_validation` | Optional parsed-G-code comparison with Bambu Cloud slicer totals |
 | `warnings` | Filaments or spools intentionally blocked to avoid guessing |
 | `last_error` | Latest gateway, source, parsing, or delivery error |
 
@@ -447,5 +516,8 @@ matching checkpoint.
   history.
 - Exact accounting depends on a retrievable sliced 3MF with usable layer and
   tool markers.
+- Cloud metadata is optional validation and source enrichment, not a fallback
+  estimate. Cloud-only jobs still remain unsupported when no explicit 3MF
+  artifact is retrievable.
 - Live printer acceptance still requires testing with the actual printer,
   gateway transport, and Spoolman deployment.

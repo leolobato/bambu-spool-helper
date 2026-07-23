@@ -168,6 +168,50 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
         await self.tracker.handle_snapshot(snapshot(layer=3))
         self.assertEqual(self.spoolman.calls, [(10, 1.0)])
 
+    async def test_cloud_totals_validate_parser_but_never_charge_usage(self):
+        event = snapshot(layer=0)
+        await self.tracker.handle_snapshot(event)
+        self.assertEqual(self.spoolman.calls, [])
+
+        matching = {
+            **event,
+            "usage_reference": {
+                "available": True,
+                "source": "bambu_cloud",
+                "subtask_id": "42",
+                "filaments": [
+                    {"filament_index": 0, "used_length_mm": 4.0},
+                ],
+            },
+        }
+        await self.tracker.handle_snapshot(matching)
+
+        validation = self.tracker.status["usage_validation"]
+        self.assertTrue(validation["matched"])
+        self.assertEqual(self.spoolman.calls, [])
+
+        different = {
+            **event,
+            "usage_reference": {
+                "available": True,
+                "source": "bambu_cloud",
+                "subtask_id": "43",
+                "filaments": [
+                    {"filament_index": 0, "used_length_mm": 400.0},
+                ],
+            },
+        }
+        await self.tracker.handle_snapshot(different)
+
+        self.assertFalse(
+            self.tracker.status["usage_validation"]["matched"],
+        )
+        self.assertIn(
+            "Charging still follows parsed completed-layer G-code",
+            " ".join(self.tracker.status["warnings"]),
+        )
+        self.assertEqual(self.spoolman.calls, [])
+
     async def test_single_filament_without_mapping_uses_reported_active_tray(self):
         self.trays = {2: "uuid-2"}
         self.spoolman.uuid_to_spool["uuid-2"] = 10

@@ -42,6 +42,7 @@ class PrintTracker:
                 cp.get("spool_totals_mm", {}) if cp else self.last_totals
             ),
             "pending_delivery": cp.get("pending_delivery") if cp else None,
+            "usage_validation": cp.get("usage_validation") if cp else None,
             "warnings": list(cp.get("warnings", [])) if cp else [],
             "last_error": self.last_error,
         }
@@ -119,6 +120,7 @@ class PrintTracker:
         if total_layers:
             self.checkpoint["total_layers"] = total_layers
         self._detect_mapping_change(snapshot.get("ams_mapping") or [])
+        self._apply_usage_reference(snapshot.get("usage_reference"))
         self.store.save(self.checkpoint)
 
         if state in FINISHED_STATES:
@@ -221,6 +223,8 @@ class PrintTracker:
                 "deliveries": {},
                 "pending_delivery": None,
                 "blocked_spools": [],
+                "usage_validation": None,
+                "usage_reference_signature": None,
                 "warnings": warnings,
             }
             self.store.save(self.checkpoint)
@@ -241,6 +245,8 @@ class PrintTracker:
             )
             self.model = evaluate_gcode(text)
             saved.setdefault("total_layers", _model_layer_count(self.model))
+            saved.setdefault("usage_validation", None)
+            saved.setdefault("usage_reference_signature", None)
             self.checkpoint = saved
             return True
         except Exception as exc:
@@ -271,6 +277,100 @@ class PrintTracker:
             )
             route["blocked"] = True
             route["warning"] = warning
+            if warning not in self.checkpoint["warnings"]:
+                self.checkpoint["warnings"].append(warning)
+
+    def _apply_usage_reference(self, reference) -> None:
+        """Compare cloud slicer totals with parsed G-code, without charging it."""
+        if (
+            self.checkpoint is None
+            or self.model is None
+            or not isinstance(reference, dict)
+            or not reference.get("available")
+        ):
+            return
+        expected_items = reference.get("filaments")
+        if not isinstance(expected_items, list):
+            return
+
+        expected: dict[int, float] = {}
+        for item in expected_items:
+            if not isinstance(item, dict):
+                continue
+            try:
+                index = int(item.get("filament_index"))
+                amount = float(item.get("used_length_mm"))
+            except (TypeError, ValueError):
+                continue
+            if index >= 0 and amount >= 0:
+                expected[index] = amount
+        if not expected:
+            return
+
+        signature = {
+            "subtask_id": str(reference.get("subtask_id") or ""),
+            "expected_mm": {
+                str(index): round(amount, 3)
+                for index, amount in sorted(expected.items())
+            },
+        }
+        if self.checkpoint.get("usage_reference_signature") == signature:
+            return
+
+        parsed: dict[int, float] = {}
+        for layer in self.model.values():
+            for index, amount in layer.items():
+                parsed[index] = parsed.get(index, 0.0) + amount
+
+        comparisons = []
+        mismatches = []
+        for index in sorted(set(expected) | set(parsed)):
+            expected_mm = expected.get(index, 0.0)
+            parsed_mm = parsed.get(index, 0.0)
+            difference_mm = parsed_mm - expected_mm
+            tolerance_mm = max(50.0, expected_mm * 0.15)
+            matched = abs(difference_mm) <= tolerance_mm
+            difference_percent = (
+                difference_mm / expected_mm * 100.0
+                if expected_mm > 0 else None
+            )
+            comparisons.append({
+                "filament_index": index,
+                "expected_mm": round(expected_mm, 3),
+                "parsed_mm": round(parsed_mm, 3),
+                "difference_mm": round(difference_mm, 3),
+                "difference_percent": (
+                    round(difference_percent, 1)
+                    if difference_percent is not None else None
+                ),
+                "matched": matched,
+            })
+            if not matched:
+                difference = (
+                    f"{abs(difference_percent):.1f}%"
+                    if difference_percent is not None
+                    else f"{abs(difference_mm):.0f} mm"
+                )
+                mismatches.append(
+                    f"filament {index} parsed {parsed_mm:.0f} mm versus "
+                    f"Bambu Cloud's {expected_mm:.0f} mm ({difference} apart)"
+                )
+
+        self.checkpoint["usage_validation"] = {
+            "source": "bambu_cloud",
+            "available": True,
+            "matched": not mismatches,
+            "tolerance_percent": 15,
+            "minimum_tolerance_mm": 50,
+            "filaments": comparisons,
+        }
+        self.checkpoint["usage_reference_signature"] = signature
+        if mismatches:
+            warning = (
+                "G-code usage validation warning: "
+                + "; ".join(mismatches)
+                + ". Charging still follows parsed completed-layer G-code."
+            )
             if warning not in self.checkpoint["warnings"]:
                 self.checkpoint["warnings"].append(warning)
 

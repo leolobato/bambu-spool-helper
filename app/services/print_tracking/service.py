@@ -81,6 +81,7 @@ class PrintTrackingService:
             "total_layers": tracker["total_layers"],
             "spool_totals_mm": tracker["spool_totals_mm"],
             "pending_delivery": tracker["pending_delivery"],
+            "usage_validation": tracker["usage_validation"],
             "warnings": tracker["warnings"],
             "last_event": self.gateway.last_event,
             "last_error": tracker["last_error"] or self.gateway.last_error,

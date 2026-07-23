@@ -116,7 +116,7 @@ Printer variables are optional. Without them the service runs as a read-only
 inventory linker — useful for prepping spool data ahead of time, or for running
 on a host that can't reach the printer.
 
-Filament usage tracking is off until enabled in the AMS tray status UI. It
+Filament usage tracking is off until enabled on the Settings screen. It
 persists the toggle, active 3MF, completed-layer checkpoint, route snapshot,
 per-spool totals, and pending deliveries under `PRINT_TRACKING_DIR`. Spoolman
 remains authoritative for inventory and all linkage data. The helper submits
