@@ -161,6 +161,32 @@ class TrayStatus(BaseModel):
         return "#4b5563"
 
 
+class AmsTrayResponse(BaseModel):
+    """One AMS slot (0-3) or the external spool (4) as served by `GET /ams`."""
+
+    tray: int
+    label: str
+    empty: bool
+    tray_type: str = ""
+    tray_color: str = ""  # "#RRGGBB" or "" when unknown
+    filament_id: str = ""  # Bambu profile id, e.g. "GFSA00"
+    tray_sub_brands: str = ""
+    remain: int = -1  # AMS-reported percentage; -1 when unknown
+    nozzle_temp_min: int = 0
+    nozzle_temp_max: int = 0
+    bed_temp: int = 0
+    spool_id: int | None = None  # bound Spoolman spool, when resolvable
+
+
+class AmsStateResponse(BaseModel):
+    """Snapshot of the AMS + external spool for `GET /ams`."""
+
+    connected: bool
+    printer_state: str | None = None
+    active_tray: int | None = None  # helper tray index currently feeding the toolhead
+    trays: list[AmsTrayResponse]
+
+
 class SpoolmanVendor(BaseModel):
     model_config = ConfigDict(extra="ignore")
 

@@ -16,7 +16,12 @@ from typing import Any
 
 import httpx
 
-from app.services.mqtt_printer import TrayData, _is_placeholder_tray_uuid, _synthetic_slot_uuid
+from app.services.mqtt_printer import (
+    TrayData,
+    _is_placeholder_tray_uuid,
+    _synthetic_slot_uuid,
+    normalize_active_tray,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,6 +36,7 @@ class GatewayActivator:
         self._last_error: str | None = None
         self._last_message_at: datetime | None = None
         self._trays: dict[int, TrayData] = {}
+        self._active_tray: int | None = None
         self._printer_online: bool | None = None
         self._printer_state: str | None = None
 
@@ -59,6 +65,10 @@ class GatewayActivator:
         if not self._trays:
             self._refresh_trays_safely()
         return dict(self._trays)
+
+    def get_active_tray(self) -> int | None:
+        """Flattened index of the tray feeding the toolhead, or None when idle."""
+        return self._active_tray
 
     def get_tray_uuid(self, tray_id: int) -> str | None:
         """Return a binding identifier for the given tray slot.
@@ -223,6 +233,7 @@ class GatewayActivator:
         if printer is None:
             self._printer_online = False
             self._printer_state = "missing"
+            self._active_tray = None
             self._last_error = f"Gateway does not list printer {self._serial}."
             return False
 
@@ -230,6 +241,9 @@ class GatewayActivator:
         online = _gateway_printer_is_online(printer)
         self._printer_online = online
         self._printer_state = state or None
+        self._active_tray = (
+            normalize_active_tray(printer.get("active_tray")) if online else None
+        )
         if not online:
             label = state or "offline"
             self._last_error = f"Gateway reports printer {self._serial} is {label}."

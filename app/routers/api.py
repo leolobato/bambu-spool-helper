@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import logging
 from datetime import datetime, timezone
 from typing import Any
 
@@ -13,11 +15,15 @@ from app.models import (
     ActivationRecord,
     ActivateRequest,
     ActivateResponse,
+    AmsStateResponse,
+    AmsTrayResponse,
     FilamentProfileResponse,
     PrintTrackingSettingsRequest,
     StatusResponse,
 )
-from app.tray_labels import tray_label
+from app.tray_labels import EXTERNAL_HELPER_TRAY, tray_label
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["API"])
 
@@ -57,6 +63,75 @@ async def update_print_tracking_settings(
 @router.get("/valid-tray-types")
 async def get_valid_tray_types() -> list[str]:
     return sorted(VALID_TRAY_TYPES)
+
+
+def _tray_color_css(raw: str) -> str:
+    cleaned = (raw or "").strip().lstrip("#").upper()
+    return f"#{cleaned[:6]}" if len(cleaned) >= 6 else ""
+
+
+@router.get("/ams", response_model=AmsStateResponse)
+async def get_ams_state(request: Request) -> AmsStateResponse:
+    """Current AMS + external spool contents, with Spoolman spool bindings.
+
+    In MQTT mode the refresh request is asynchronous, so a cold cache may
+    need a second call before trays are populated.
+    """
+    mqtt = request.app.state.mqtt
+    await asyncio.to_thread(mqtt.request_full_status)
+    tray_data = mqtt.get_tray_data()
+    connection = mqtt.get_connection_status()
+
+    try:
+        uuids = await mqtt.get_tray_uuids()
+    except Exception as exc:
+        logger.warning("Tray uuid snapshot failed for /ams: %s", exc)
+        uuids = {}
+
+    bindings: dict[int, int] = {}
+    if uuids:
+        try:
+            spools = await request.app.state.spoolman.get_spools()
+        except Exception as exc:
+            logger.warning("Spoolman unavailable for /ams bindings: %s", exc)
+            spools = []
+        by_uuid: dict[str, list[int]] = {}
+        for spool in spools:
+            spool_uuid = spool.bambu_tray_uuid
+            if spool_uuid:
+                by_uuid.setdefault(spool_uuid, []).append(spool.id)
+        for tray_index, tray_uuid in uuids.items():
+            matches = by_uuid.get(tray_uuid, [])
+            if len(matches) == 1:
+                bindings[tray_index] = matches[0]
+
+    trays: list[AmsTrayResponse] = []
+    for index in range(EXTERNAL_HELPER_TRAY + 1):
+        td = tray_data.get(index)
+        if td is None:
+            trays.append(AmsTrayResponse(tray=index, label=tray_label(index), empty=True))
+            continue
+        trays.append(AmsTrayResponse(
+            tray=index,
+            label=tray_label(index),
+            empty=not td.tray_type and not td.tray_info_idx,
+            tray_type=td.tray_type,
+            tray_color=_tray_color_css(td.tray_color),
+            filament_id=td.tray_info_idx,
+            tray_sub_brands=td.tray_sub_brands,
+            remain=td.remain,
+            nozzle_temp_min=td.nozzle_temp_min,
+            nozzle_temp_max=td.nozzle_temp_max,
+            bed_temp=td.bed_temp,
+            spool_id=bindings.get(index),
+        ))
+
+    return AmsStateResponse(
+        connected=bool(connection.get("connected")),
+        printer_state=connection.get("printer_state"),
+        active_tray=mqtt.get_active_tray(),
+        trays=trays,
+    )
 
 
 @router.get("/profiles", response_model=list[FilamentProfileResponse])

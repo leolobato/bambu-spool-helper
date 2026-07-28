@@ -47,7 +47,7 @@ python -m unittest tests.test_tray_profile_matching.TestTrayProfileMatching.test
 - `SpoolmanClient` — reads filaments and manages `bambu_*` extra fields. Extra field values are double-JSON-encoded (`json.dumps("value")` produces `'"value"'`).
 
 **Router layer** (`app/routers/`):
-- `api.py` — REST endpoints: `GET /status`, `GET /profiles`, `POST /activate`, `POST /reload`
+- `api.py` — REST endpoints: `GET /status`, `GET /profiles`, `GET /ams`, `POST /activate`, `POST /reload`
 - `web.py` — HTMX UI: full page at `/web/`, partials for filament list/detail/profile picker
 
 **Templates** (`app/templates/`): Jinja2 + HTMX + Tailwind CDN. Partials render HTML fragments without base template extension.
@@ -67,6 +67,7 @@ python -m unittest tests.test_tray_profile_matching.TestTrayProfileMatching.test
 
 - `GET /status` — health check with profile count
 - `GET /profiles?search=term` — list profiles, optional case-insensitive filter
+- `GET /ams` — AMS + external spool snapshot: per-tray type/color/remain, `active_tray` (tray feeding the toolhead, mapped via `normalize_active_tray`: 254 → 4, 255 → null), and the bound Spoolman `spool_id` per tray (via `bambu_tray_uuid`; null when Spoolman is down or the binding is ambiguous). Consumed by SpoolBrowser's AMS tab.
 - `POST /activate` — send filament to printer tray via MQTT
 - `POST /reload` — re-fetch profiles from orcaslicer-headless
 - `GET /web/` — HTMX web UI for linking Spoolman filaments to profiles

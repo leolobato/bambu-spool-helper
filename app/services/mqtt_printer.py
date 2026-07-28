@@ -12,7 +12,7 @@ from datetime import datetime, timezone
 
 import paho.mqtt.client as mqtt
 
-from app.tray_labels import tray_label
+from app.tray_labels import EXTERNAL_HELPER_TRAY, tray_label
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +48,21 @@ def is_synthetic_slot_uuid(uuid: str) -> bool:
     return bool(uuid) and uuid.startswith("slot:")
 
 
+def normalize_active_tray(value: object) -> int | None:
+    """Map a printer-reported active tray (`tray_now` from MQTT, `active_tray`
+    from bambu-gateway) to the helper's flattened tray index: 0-3 for AMS
+    slots, 4 for the external spool, None when nothing is loaded (255)."""
+    try:
+        tray = int(value)  # MQTT reports it as a string, e.g. "2"
+    except (TypeError, ValueError):
+        return None
+    if tray == 255:
+        return None
+    if tray == 254:
+        return EXTERNAL_HELPER_TRAY
+    return tray if tray >= 0 else None
+
+
 class TrayData:
     """Raw tray data from MQTT report."""
 
@@ -79,6 +94,7 @@ class MQTTPrinterClient:
         self._sequence = 0
         self._lock = threading.Lock()
         self._trays: dict[int, TrayData] = {}  # tray_index -> TrayData
+        self._active_tray: int | None = None
         self._last_error: str | None = None
         self._last_message_at: datetime | None = None
         self._disconnect_timer: threading.Timer | None = None
@@ -398,6 +414,11 @@ class MQTTPrinterClient:
         with self._lock:
             return dict(self._trays)
 
+    def get_active_tray(self) -> int | None:
+        """Flattened index of the tray feeding the toolhead, or None when idle."""
+        with self._lock:
+            return self._active_tray
+
     async def get_tray_uuids(self) -> dict[int, str]:
         """Snapshot helper tray -> physical/synthetic binding identifiers."""
         with self._lock:
@@ -461,6 +482,8 @@ class MQTTPrinterClient:
         ams_units = ams_data.get("ams", [])
 
         with self._lock:
+            if "tray_now" in ams_data:
+                self._active_tray = normalize_active_tray(ams_data.get("tray_now"))
             for unit in ams_units:
                 ams_id = self._to_int(unit.get("id", 0), default=0)
                 for tray in unit.get("tray", []):
