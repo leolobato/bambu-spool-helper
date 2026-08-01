@@ -168,6 +168,49 @@ class TrackerTests(unittest.IsolatedAsyncioTestCase):
         await self.tracker.handle_snapshot(snapshot(layer=3))
         self.assertEqual(self.spoolman.calls, [(10, 1.0)])
 
+    async def test_stale_layer_baseline_is_lowered_when_layer_goes_backward(self):
+        # Firmware repeats the previous job's final layer_num during PREPARE,
+        # so activation baselines at layer 127. The first real report (layer
+        # 0) must lower the baseline instead of skipping the whole print.
+        await self.tracker.handle_snapshot(snapshot(layer=127, total=4))
+        self.assertEqual(
+            self.tracker.checkpoint["completed_through"], 126,
+        )
+        await self.tracker.handle_snapshot(snapshot(layer=0))
+        self.assertEqual(
+            self.tracker.checkpoint["completed_through"], -1,
+        )
+        await self.tracker.handle_snapshot(snapshot(layer=3))
+        self.assertEqual(self.spoolman.calls, [(10, 1.0)] * 3)
+
+    async def test_no_active_tray_sentinel_blocks_instead_of_external(self):
+        # tray_now 255 means "no tray feeding", not the external spool —
+        # routing it would charge whatever is bound to the external slot.
+        await self.tracker.handle_snapshot(
+            snapshot(mapping=[], active_tray=255),
+        )
+        await self.tracker.handle_snapshot(
+            snapshot(layer=1, mapping=[], active_tray=255),
+        )
+
+        self.assertEqual(self.spoolman.calls, [])
+        self.assertTrue(self.tracker.checkpoint["routes"]["0"]["blocked"])
+        self.assertIn(
+            "no tray is loaded",
+            " ".join(self.tracker.status["warnings"]),
+        )
+
+        # Warnings must survive finalization so an operator can still see
+        # why a completed job charged less than expected.
+        await self.tracker.handle_snapshot(
+            snapshot(state="FINISH", layer=4, mapping=[], active_tray=255),
+        )
+        self.assertIsNone(self.tracker.checkpoint)
+        self.assertIn(
+            "no tray is loaded",
+            " ".join(self.tracker.status["warnings"]),
+        )
+
     async def test_cloud_totals_validate_parser_but_never_charge_usage(self):
         event = snapshot(layer=0)
         await self.tracker.handle_snapshot(event)

@@ -8,7 +8,11 @@ from app.services.print_tracking.gcode_parser import (
     evaluate_gcode,
     gcode_from_3mf,
 )
-from app.tray_labels import migrate_legacy_tray_references, tray_label
+from app.tray_labels import (
+    EXTERNAL_HELPER_TRAY,
+    migrate_legacy_tray_references,
+    tray_label,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +31,7 @@ class PrintTracker:
         self.last_error: str | None = None
         self.last_job_key: str | None = None
         self.last_totals: dict[str, float] = {}
+        self.last_warnings: list[str] = []
 
     @property
     def status(self) -> dict:
@@ -44,7 +49,9 @@ class PrintTracker:
             ),
             "pending_delivery": cp.get("pending_delivery") if cp else None,
             "usage_validation": cp.get("usage_validation") if cp else None,
-            "warnings": list(cp.get("warnings", [])) if cp else [],
+            "warnings": (
+                list(cp.get("warnings", [])) if cp else list(self.last_warnings)
+            ),
             "last_error": self.last_error,
         }
 
@@ -118,6 +125,16 @@ class PrintTracker:
         assert self.checkpoint is not None
         self.checkpoint["state"] = state
         self.checkpoint["current_layer"] = current_layer
+        # Firmware keeps repeating the previous job's final layer_num until
+        # the replacement job lays its first layer, so an activation inside
+        # that window baselines completed_through too high. Layer numbers are
+        # monotonic within one job; a backward report proves the baseline was
+        # stale — lower it so the skipped layers still get charged. The
+        # per-layer deliveries ledger keeps this from double-charging.
+        if current_layer - 1 < int(
+            self.checkpoint.get("completed_through", -1)
+        ):
+            self.checkpoint["completed_through"] = current_layer - 1
         if total_layers:
             self.checkpoint["total_layers"] = total_layers
         self._detect_mapping_change(snapshot.get("ams_mapping") or [])
@@ -419,6 +436,7 @@ class PrintTracker:
         self.last_totals = dict(
             self.checkpoint.get("spool_totals_mm") or {},
         )
+        self.last_warnings = list(self.checkpoint.get("warnings") or [])
         self.checkpoint = None
         self.model = None
         self.store.clear_checkpoint()
@@ -428,6 +446,9 @@ class PrintTracker:
             self.last_job_key = self.checkpoint.get("job_key")
             self.last_totals = dict(
                 self.checkpoint.get("spool_totals_mm") or {},
+            )
+            self.last_warnings = list(
+                self.checkpoint.get("warnings") or [],
             )
         self.checkpoint = None
         self.model = None
@@ -458,10 +479,19 @@ def _resolve_missing_mapping(
             "Printer did not report an AMS mapping or active tray; automatic "
             "charging is blocked"
         )
+    # tray_now 255 means no tray is feeding (e.g. during PREPARE) — only 254
+    # identifies the external spool. Routing 255 would charge whichever spool
+    # is bound to the external slot.
+    if tray == 255:
+        return [], (
+            "Printer did not report an AMS mapping and no tray is loaded "
+            "yet; automatic charging is blocked"
+        )
     filament = next(iter(filament_indices))
     inferred = [-1] * (filament + 1)
     inferred[filament] = tray
+    label = tray_label(EXTERNAL_HELPER_TRAY if tray == 254 else tray)
     return inferred, (
         f"Printer did not report an AMS mapping; single-filament usage is "
-        f"routed through the reported active tray {tray_label(tray)}"
+        f"routed through the reported active tray {label}"
     )
