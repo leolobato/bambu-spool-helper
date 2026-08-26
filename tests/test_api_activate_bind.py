@@ -30,6 +30,10 @@ def _setup_state(mqtt_tray_uuid: str | None, *, bind_raises: Exception | None = 
     orcaslicer.find_profile = AsyncMock(return_value=None)
     app.state.orcaslicer = orcaslicer
 
+    settings = MagicMock()
+    settings.printer_serial = "TESTSERIAL"
+    app.state.settings = settings
+
     app.state.recent_activations = []
     return mqtt, spoolman
 
@@ -71,12 +75,26 @@ class TestActivateWithSpoolId(unittest.TestCase):
             spoolman.bind_spool_to_tray_uuid.await_args is not None
         )
 
-    def test_409_when_tray_uuid_missing(self):
+    def test_falls_back_to_synthetic_slot_uuid_when_tray_uuid_missing(self):
+        """A non-RFID spool freshly loaded into an unconfigured slot has no
+        UUID and no tray_info_idx yet; the caller is claiming the slot, so
+        bind via the synthetic per-slot id and activate (same as web UI)."""
         mqtt, spoolman = _setup_state(mqtt_tray_uuid=None)
         client = TestClient(app)
         resp = client.post("/activate", json=_activate_body(spool_id=42))
+        self.assertEqual(resp.status_code, 200)
+        spoolman.bind_spool_to_tray_uuid.assert_awaited_once_with(
+            spool_id=42, tray_uuid="slot:TESTSERIAL:0",
+        )
+        mqtt.activate_filament.assert_called_once()
+
+    def test_409_when_tray_uuid_missing_and_no_printer_serial(self):
+        mqtt, spoolman = _setup_state(mqtt_tray_uuid=None)
+        app.state.settings.printer_serial = ""
+        client = TestClient(app)
+        resp = client.post("/activate", json=_activate_body(spool_id=42))
         self.assertEqual(resp.status_code, 409)
-        self.assertIn("A1 has no UUID", resp.json()["detail"])
+        self.assertIn("PRINTER_SERIAL", resp.json()["detail"])
         spoolman.bind_spool_to_tray_uuid.assert_not_awaited()
         mqtt.activate_filament.assert_not_called()
 

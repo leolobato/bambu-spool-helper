@@ -10,6 +10,7 @@ from typing import Any
 import httpx
 from fastapi import APIRouter, HTTPException, Query, Request
 
+from app.services.mqtt_printer import _synthetic_slot_uuid
 from app.models import (
     VALID_TRAY_TYPES,
     ActivationRecord,
@@ -178,13 +179,22 @@ async def activate_profile(request: Request, payload: ActivateRequest) -> Activa
         mqtt.request_full_status()
         tray_uuid = mqtt.get_tray_uuid(payload.tray)
         if tray_uuid is None:
-            raise HTTPException(
-                status_code=409,
-                detail=(
-                    f"{tray_label(payload.tray)} has no UUID yet "
-                    "(AMS hasn't reported this slot). Retry once scanned."
-                ),
-            )
+            # AMS hasn't reported the slot, or reports it as empty (no RFID and
+            # no filament configured on the printer yet). The caller is
+            # explicitly claiming this slot for a non-RFID spool — fall back to
+            # the synthetic per-slot id so the bind proceeds. The
+            # `activate_filament` call below then teaches the printer what's
+            # loaded. Mirrors the web UI's tray-bind flow.
+            printer_serial = request.app.state.settings.printer_serial
+            if not printer_serial:
+                raise HTTPException(
+                    status_code=409,
+                    detail=(
+                        f"{tray_label(payload.tray)} has no UUID and PRINTER_SERIAL "
+                        "is not configured, so the spool can't be bound to the slot."
+                    ),
+                )
+            tray_uuid = _synthetic_slot_uuid(printer_serial, payload.tray)
         try:
             await request.app.state.spoolman.bind_spool_to_tray_uuid(
                 spool_id=payload.spool_id, tray_uuid=tray_uuid,
