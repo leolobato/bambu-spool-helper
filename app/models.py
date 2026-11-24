@@ -172,6 +172,7 @@ class AmsTrayResponse(BaseModel):
     filament_id: str = ""  # Bambu profile id, e.g. "GFSA00"
     tray_sub_brands: str = ""
     remain: int = -1  # AMS-reported percentage; -1 when unknown
+    remaining_grams: int | None = None  # usable estimate; None when unknown
     nozzle_temp_min: int = 0
     nozzle_temp_max: int = 0
     bed_temp: int = 0

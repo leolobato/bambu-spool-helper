@@ -121,6 +121,7 @@ async def get_ams_state(request: Request) -> AmsStateResponse:
             filament_id=td.tray_info_idx,
             tray_sub_brands=td.tray_sub_brands,
             remain=td.remain,
+            remaining_grams=td.remaining_grams,
             nozzle_temp_min=td.nozzle_temp_min,
             nozzle_temp_max=td.nozzle_temp_max,
             bed_temp=td.bed_temp,

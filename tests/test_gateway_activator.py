@@ -124,6 +124,7 @@ class TestTrayDataFetch(unittest.TestCase):
                         "tray_uuid": "uuid-0",
                         "cali_idx": 2,
                         "remain": 80,
+                        "remain_g": 640,
                     },
                     {
                         "ams_id": 0,
@@ -149,6 +150,7 @@ class TestTrayDataFetch(unittest.TestCase):
         self.assertEqual(data[0].k, 0.02)
         self.assertEqual(data[0].cali_idx, 2)
         self.assertEqual(data[0].remain, 80)
+        self.assertEqual(data[0].remaining_grams, 640)
         self.assertEqual(data[1].tray_type, "PETG")
         self.assertEqual(data[4].tray_info_idx, "GFA01")
 

@@ -18,6 +18,7 @@ import httpx
 
 from app.services.mqtt_printer import (
     TrayData,
+    firmware_grams,
     _is_placeholder_tray_uuid,
     _synthetic_slot_uuid,
     normalize_active_tray,
@@ -326,6 +327,15 @@ def _to_tray_data(raw: dict) -> TrayData:
     td.nozzle_temp_max = _coerce_int(raw.get("nozzle_temp_max"))
     td.bed_temp = _coerce_int(raw.get("bed_temp"))
     td.remain = _coerce_int(raw.get("remain"), default=-1)
+    if "remaining_grams" in raw:
+        # Trust the gateway's own estimate. Encoded into remain_g so
+        # TrayData.remaining_grams returns it verbatim: a positive value is
+        # used as-is, and null maps to 0, which means "unknown, no fallback".
+        grams = raw["remaining_grams"]
+        td.remain_g = grams if type(grams) is int and grams > 0 else 0
+    else:
+        # Older gateways: derive it from the raw report like direct MQTT.
+        td.remain_g = firmware_grams(raw.get("remain_g"))
     td.tray_weight = _coerce_int(raw.get("tray_weight"))
     td.tray_uuid = str(raw.get("tray_uuid") or "")
     td.cali_idx = _coerce_int(raw.get("cali_idx"), default=-1)

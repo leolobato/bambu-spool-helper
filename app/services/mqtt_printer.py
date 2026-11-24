@@ -63,6 +63,15 @@ def normalize_active_tray(value: object) -> int | None:
     return tray if tray >= 0 else None
 
 
+def firmware_grams(value: object) -> int:
+    """Firmware gram estimate, or -1 when absent or malformed.
+
+    Strict like bambu-gateway: only a real integer counts, so a float,
+    string or bool doesn't masquerade as a gram reading.
+    """
+    return value if type(value) is int and value >= 0 else -1
+
+
 class TrayData:
     """Raw tray data from MQTT report."""
 
@@ -76,12 +85,27 @@ class TrayData:
         self.nozzle_temp_max: int = 0
         self.bed_temp: int = 0
         self.remain: int = -1
+        self.remain_g: int = -1
         self.tray_weight: int = 0
         self.k: float | None = None
         self.n: float | None = None
         self.tray_uuid: str = ""
         self.cali_idx: int = -1
 
+    @property
+    def remaining_grams(self) -> int | None:
+        """Usable remaining-filament estimate in grams, or None when unknown.
+
+        Mirrors bambu-gateway and Bambu Studio: prefer the firmware's gram
+        estimate, treat a reported 0 g as unknown (occupied trays can report
+        zeros), and only fall back to percent x nominal weight when the
+        firmware sends no gram estimate at all.
+        """
+        if self.remain_g >= 0:
+            return self.remain_g or None
+        if not 0 < self.remain <= 100 or self.tray_weight <= 0:
+            return None
+        return (self.tray_weight * self.remain // 100) or None
 
 class MQTTPrinterClient:
     def __init__(self, ip: str, access_code: str, serial: str) -> None:
@@ -508,6 +532,10 @@ class MQTTPrinterClient:
                         td.bed_temp = self._to_int(tray["bed_temp"], default=0)
                     if "remain" in tray:
                         td.remain = self._to_int(tray["remain"], default=-1)
+                    if "remain" in tray or "remain_g" in tray:
+                        # A tray block without a gram estimate (e.g. a swapped-in
+                        # non-RFID spool) must not keep the previous spool's grams.
+                        td.remain_g = firmware_grams(tray.get("remain_g"))
                     if "tray_weight" in tray:
                         td.tray_weight = self._to_int(tray["tray_weight"], default=0)
                     if "k" in tray:
@@ -540,6 +568,10 @@ class MQTTPrinterClient:
                     td.bed_temp = self._to_int(vt_tray["bed_temp"], default=0)
                 if "remain" in vt_tray:
                     td.remain = self._to_int(vt_tray["remain"], default=-1)
+                if "remain" in vt_tray or "remain_g" in vt_tray:
+                    # A tray block without a gram estimate (e.g. a swapped-in
+                    # non-RFID spool) must not keep the previous spool's grams.
+                    td.remain_g = firmware_grams(vt_tray.get("remain_g"))
                 if "tray_weight" in vt_tray:
                     td.tray_weight = self._to_int(vt_tray["tray_weight"], default=0)
                 if "k" in vt_tray:

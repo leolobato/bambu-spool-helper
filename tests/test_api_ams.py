@@ -138,5 +138,89 @@ class TestNormalizeActiveTray(unittest.TestCase):
         self.assertIsNone(normalize_active_tray(-1))
 
 
+
+
+class TestRemainingGrams(unittest.TestCase):
+    """`remaining_grams` follows bambu-gateway / Bambu Studio semantics."""
+
+    CASES = [
+        # (remain %, remain_g, tray_weight, expected)
+        (0, 0, 0, None),          # occupied tray reporting all zeros
+        (30, 0, 1000, None),      # reported 0 g is unknown, no % fallback
+        (30, 280, 1000, 280),     # firmware grams win over the percentage
+        (-1, 280, 0, 280),
+        (33, -1, 750, 247),       # no gram estimate: percent x nominal weight
+        (50, -1, 0, None),        # no nominal weight
+        (101, -1, 1000, None),    # implausible percentage
+        (-1, -1, 1000, None),
+    ]
+
+    def test_property(self):
+        for remain, remain_g, weight, expected in self.CASES:
+            with self.subTest(remain=remain, remain_g=remain_g, weight=weight):
+                td = _tray("PLA", remain=remain)
+                td.remain_g = remain_g
+                td.tray_weight = weight
+                self.assertEqual(td.remaining_grams, expected)
+
+    def test_exposed_by_ams_endpoint(self):
+        td = _tray("PLA", "ECE9E2FF", "GFA00", remain=30)
+        td.remain_g = 280
+        td.tray_weight = 1000
+        _setup_state({0: td, 1: _tray("PLA", remain=0)})
+        body = TestClient(app).get("/ams").json()
+        self.assertEqual(body["trays"][0]["remaining_grams"], 280)
+        self.assertEqual(body["trays"][0]["remain"], 30)
+        self.assertIsNone(body["trays"][1]["remaining_grams"])
+        self.assertIsNone(body["trays"][2]["remaining_grams"])  # empty slot
+
+    def test_mqtt_report_parses_remain_g(self):
+        from app.services.mqtt_printer import MQTTPrinterClient
+
+        client = MQTTPrinterClient("10.0.0.5", "code", "SER")
+        client._parse_ams_report({"print": {
+            "ams": {"ams": [{"id": "0", "tray": [
+                {"id": "0", "tray_type": "PLA", "remain": 30, "remain_g": 280, "tray_weight": "1000"},
+                {"id": "1", "tray_type": "PLA", "remain": 0, "remain_g": 0, "tray_weight": "0"},
+            ]}]},
+            "vt_tray": {"tray_type": "PETG", "remain": 50, "tray_weight": "1000"},
+        }})
+        trays = client.get_tray_data()
+        self.assertEqual(trays[0].remaining_grams, 280)
+        self.assertIsNone(trays[1].remaining_grams)
+        self.assertEqual(trays[4].remaining_grams, 500)
+
+
+    def test_spool_swap_drops_previous_grams(self):
+        from app.services.mqtt_printer import MQTTPrinterClient
+
+        client = MQTTPrinterClient("10.0.0.5", "code", "SER")
+        report = lambda tray: {"print": {"ams": {"ams": [{"id": "0", "tray": [tray]}]}}}
+        client._parse_ams_report(report(
+            {"id": "0", "tray_type": "PLA", "tray_uuid": "A", "remain": 80, "remain_g": 800, "tray_weight": "1000"}))
+        client._parse_ams_report(report(
+            {"id": "0", "tray_type": "PLA", "tray_uuid": "B", "remain": 20, "tray_weight": "750"}))
+        self.assertEqual(client.get_tray_data()[0].remaining_grams, 150)
+
+    def test_malformed_firmware_grams_fall_back_to_percent(self):
+        from app.services.mqtt_printer import MQTTPrinterClient
+
+        for bad in (63.9, False, "280"):
+            with self.subTest(remain_g=bad):
+                client = MQTTPrinterClient("10.0.0.5", "code", "SER")
+                client._parse_ams_report({"print": {"ams": {"ams": [{"id": "0", "tray": [
+                    {"id": "0", "tray_type": "PLA", "remain": 30, "remain_g": bad, "tray_weight": "1000"},
+                ]}]}}})
+                self.assertEqual(client.get_tray_data()[0].remaining_grams, 300)
+
+    def test_gateway_estimate_is_trusted(self):
+        from app.services.gateway_activator import _to_tray_data
+
+        base = {"tray_type": "PLA", "remain": 30, "tray_weight": "1000", "remain_g": "0"}
+        self.assertEqual(_to_tray_data({**base, "remaining_grams": 300}).remaining_grams, 300)
+        self.assertIsNone(_to_tray_data({**base, "remaining_grams": None}).remaining_grams)
+        # Older gateway without the field: derived locally from raw values.
+        self.assertEqual(_to_tray_data(base).remaining_grams, 300)
+
 if __name__ == "__main__":
     unittest.main()
