@@ -1,3 +1,3 @@
 """bambu-spool-helper package."""
 
-__version__ = "1.1.4"
+__version__ = "1.2.0"
